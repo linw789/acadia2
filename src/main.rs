@@ -1,4 +1,4 @@
-pub mod wsi;
+mod vulkan;
 
 fn main() {
     println!("hello triangle");

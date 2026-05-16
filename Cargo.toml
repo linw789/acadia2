@@ -3,6 +3,11 @@ name = "acadia2"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+acadia_assertion = []
+vulkan_debug = []
+default = ["acadia_assertion", "vulkan_debug"]
+
 [dependencies]
 ash = { version = "0.38.0", default-features = false, features = [
     "linked",
