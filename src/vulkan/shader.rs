@@ -92,7 +92,7 @@ impl ShaderManager {
 		spv_file.read_exact(unsafe {
 			// Soundness: 
 			// - spv_words was allocated just above, so it's definitely not null.
-			// - The arary pointed to by the casted pointer has length that's equal to the file size.
+			// - The array pointed to by the casted pointer has length that's equal to the file size.
 			// - The casted pointer is only accessed within this function.
 			// - We checked above that the file size is smaller than isize::MAX.
 			slice::from_raw_parts_mut(
