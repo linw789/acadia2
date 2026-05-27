@@ -1,61 +1,100 @@
 use ash::vk;
-use spirv::{ExecutionModel, Op};
-use std::io::Result;
+use spirv::{Decoration, ExecutionModel, Op, StorageClass};
+use std::{
+	fs::File,
+	io::{Error, ErrorKind, Read, Result},
+	path::Path,
+	slice,
+};
 
-pub struct OpTypeStruct {
+struct OpTypeBool {}
+
+struct OpTypeInt {
+	width: u32,
+	signedness: u32,
+}
+
+struct OpTypeFloat {
+	width: u32,
+}
+
+struct OpTypePointer {
+	storage_class: StorageClass,
+	type_id: u32,
+}
+
+struct OpTypeStruct {
 	member_ids: Vec<u32>,
 }
 
-pub struct OpTypeImage {
+struct OpTypeImage {}
+
+struct OpTypeSampler {}
+
+struct OpTypeSampledImage {}
+
+struct OpTypeArray {
+	element_type_id: u32,
+	length: u32,
 }
 
-pub struct OpTypeSampler {
-}
-
-pub struct OpTypeSampledImage {
-}
-
-pub struct OpTypePointer {
-}
-
-pub enum OpType {
+enum OpType {
+	Bool(OpTypeBool),
+	Int(OpTypeInt),
+	Float(OpTypeFloat),
+	Pointer(OpTypePointer),
 	Struct(OpTypeStruct),
 	Image(OpTypeImage),
 	Sampler(OpTypeSampler),
 	SampledImage(OpTypeSampledImage),
+	Array(OpTypeArray),
 }
 
-pub enum OpConstant {
-	I32(i32),
-	U32(u32),
-	F32(f32),
-}
-
-pub struct SpvType {
+struct SpvType {
 	id: u32,
 	op_type: OpType,
 }
 
-pub struct SpvConstant {
-	id: u32,
-	constant: OpConstant,
-}
-
-pub struct SpvVariable {
+struct SpvConstant {
 	id: u32,
 	type_id: u32,
 }
 
-pub struct ParsedInstructions {
-	types: Vec<SpvType>,
-	constants: Vec<SpvConstant>,
-	variables: Vec<SpvVariable>,
+struct SpvVariable {
+	id: u32,
+	type_id: u32,
+	storage_class: StorageClass,
 }
 
-pub fn parse(spv_code: &[u32]) {
+// Currenty only support descriptor set and binding decorations.
+struct SpvDecoration {
+	target_id: u32,
+	decoration: Decoration,
+	value: u32,
+}
+
+/// Data about a shader variable's binding, set, and type.
+pub struct SpvVariableBindingInfo {
+	set: u32,
+	binding: u32,
+	desc_type: vk::DescriptorType,
+}
+
+pub struct SpvParsed {
+	shader_stage: vk::ShaderStageFlags,
+	variable_binding_infos: Vec<SpvVariableBindingInfo>,
+}
+
+pub fn parse_code(spv_code: &[u32]) -> SpvParsed {
 	let id_bound = spv_code[3];
 
 	let mut shader_stage: Option<vk::ShaderStageFlags> = None;
+
+	let mut parsed_decorations: Vec<SpvDecoration> = Vec::new();
+	let mut parsed_types: Vec<SpvType> = Vec::new();
+	let mut parsed_constants: Vec<SpvConstant> = Vec::new();
+	let mut parsed_variables: Vec<SpvVariable> = Vec::new();
+
 	let mut word_pos = 5;
 	while word_pos < spv_code.len() {
 		let word_0 = spv_code[word_pos];
@@ -65,15 +104,95 @@ pub fn parse(spv_code: &[u32]) {
 
 		let instruction = &spv_code[word_pos..(word_pos + word_count)];
 
-		let mut parsed_types: Vec<SpvType> = Vec::new();
-		let mut parsed_constants: Vec<SpvConstant> = Vec::new();
-
 		let opcode = Op::from_u32(opcode).unwrap();
 		match opcode {
 			Op::EntryPoint => {
 				debug_assert!(word_count >= 2);
 				let model = ExecutionModel::from_u32(instruction[1]).unwrap();
 				shader_stage = shader_stage_from_execution_model(model);
+			}
+			Op::Decorate => {
+				debug_assert!(word_count >= 3);
+
+				let target_id = instruction[1];
+				debug_assert!(target_id < id_bound);
+
+				let decoration = Decoration::from_u32(instruction[2]).unwrap();
+				match decoration {
+					Decoration::DescriptorSet => {
+						debug_assert!(word_count == 4);
+						parsed_decorations.push(SpvDecoration {
+							target_id,
+							decoration,
+							value: instruction[3],
+						});
+					}
+					Decoration::Binding => {
+						debug_assert!(word_count == 4);
+						parsed_decorations.push(SpvDecoration {
+							target_id,
+							decoration,
+							value: instruction[3],
+						});
+					}
+					_ => (),
+				}
+			}
+			Op::TypeBool => {
+				debug_assert!(word_count == 2);
+
+				let result_id = instruction[1];
+				debug_assert!(result_id < id_bound);
+
+				let spv_type = SpvType {
+					id: result_id,
+					op_type: OpType::Bool(OpTypeBool {}),
+				};
+				parsed_types.push(spv_type);
+			}
+			Op::TypeInt => {
+				debug_assert!(word_count == 4);
+
+				let result_id = instruction[1];
+				debug_assert!(result_id < id_bound);
+
+				let spv_type = SpvType {
+					id: result_id,
+					op_type: OpType::Int(OpTypeInt {
+						width: instruction[2],
+						signedness: instruction[3],
+					}),
+				};
+				parsed_types.push(spv_type);
+			}
+			Op::TypeFloat => {
+				debug_assert!(word_count >= 3);
+
+				let result_id = instruction[1];
+				debug_assert!(result_id < id_bound);
+
+				let spv_type = SpvType {
+					id: result_id,
+					op_type: OpType::Float(OpTypeFloat {
+						width: instruction[2],
+					}),
+				};
+				parsed_types.push(spv_type);
+			}
+			Op::TypePointer => {
+				debug_assert!(word_count == 4);
+
+				let result_id = instruction[1];
+				debug_assert!(result_id < id_bound);
+
+				let spv_type = SpvType {
+					id: result_id,
+					op_type: OpType::Pointer(OpTypePointer {
+						storage_class: StorageClass::from_u32(instruction[2]).unwrap(),
+						type_id: instruction[3],
+					}),
+				};
+				parsed_types.push(spv_type);
 			}
 			Op::TypeStruct => {
 				debug_assert!(word_count >= 2);
@@ -83,7 +202,10 @@ pub fn parse(spv_code: &[u32]) {
 
 				let member_ids = instruction[2..word_count].to_vec();
 				let op_struct = OpTypeStruct { member_ids };
-				let spv_type = SpvType { id: result_id, op_type: OpType::Struct(op_struct), };
+				let spv_type = SpvType {
+					id: result_id,
+					op_type: OpType::Struct(op_struct),
+				};
 				parsed_types.push(spv_type);
 			}
 			Op::TypeImage => {
@@ -93,7 +215,10 @@ pub fn parse(spv_code: &[u32]) {
 				debug_assert!(result_id < id_bound);
 
 				let op_image = OpTypeImage {};
-				let spv_type = SpvType { id: result_id, op_type: OpType::Image(op_image), };
+				let spv_type = SpvType {
+					id: result_id,
+					op_type: OpType::Image(op_image),
+				};
 				parsed_types.push(spv_type);
 			}
 			Op::TypeSampler => {
@@ -103,7 +228,10 @@ pub fn parse(spv_code: &[u32]) {
 				debug_assert!(result_id < id_bound);
 
 				let op_sampler = OpTypeSampler {};
-				let spv_type = SpvType { id: result_id, op_type: OpType::Sampler(op_sampler), };
+				let spv_type = SpvType {
+					id: result_id,
+					op_type: OpType::Sampler(op_sampler),
+				};
 				parsed_types.push(spv_type);
 			}
 			Op::TypeSampledImage => {
@@ -113,29 +241,179 @@ pub fn parse(spv_code: &[u32]) {
 				debug_assert!(result_id < id_bound);
 
 				let op_sampled_image = OpTypeSampledImage {};
-				let spv_type = SpvType { id: result_id, op_type: OpType::SampledImage(op_sampled_image), };
+				let spv_type = SpvType {
+					id: result_id,
+					op_type: OpType::SampledImage(op_sampled_image),
+				};
+				parsed_types.push(spv_type);
+			}
+			Op::TypeArray => {
+				debug_assert!(word_count == 4);
+
+				let result_id = instruction[1];
+				debug_assert!(result_id < id_bound);
+
+				let spv_type = SpvType {
+					id: result_id,
+					op_type: OpType::Array(OpTypeArray {
+						element_type_id: instruction[2],
+						length: instruction[3],
+					}),
+				};
 				parsed_types.push(spv_type);
 			}
 			Op::Constant => {
+				debug_assert!(word_count >= 4);
+
+				let type_id = instruction[1];
+				debug_assert!(type_id < id_bound);
+
+				let result_id = instruction[2];
+				debug_assert!(result_id < id_bound);
+
+				let constant = SpvConstant {
+					id: result_id,
+					type_id,
+				};
+				parsed_constants.push(constant);
 			}
-			_ => ()
+			Op::Variable => {
+				debug_assert!(word_count >= 4);
+
+				let type_id = instruction[1];
+				debug_assert!(type_id < id_bound);
+
+				let result_id = instruction[2];
+				debug_assert!(result_id < id_bound);
+
+				let storage_class = StorageClass::from_u32(instruction[3]).unwrap();
+
+				let variable = SpvVariable {
+					id: result_id,
+					type_id,
+					storage_class,
+				};
+				parsed_variables.push(variable);
+			}
+			_ => (),
 		}
 
 		word_pos += word_count;
 	}
+
+	let mut binding_infos: Vec<SpvVariableBindingInfo> = Vec::new();
+
+	for var in &parsed_variables {
+		let mut set = u32::MAX;
+		let mut binding = u32::MAX;
+		if let Some(dec) = parsed_decorations.iter().find(|&d| d.target_id == var.id) {
+			match dec.decoration {
+				Decoration::DescriptorSet => {
+					set = dec.value;
+				}
+				Decoration::Binding => {
+					binding = dec.value;
+				}
+				_ => (),
+			}
+		}
+
+		if binding != u32::MAX {
+			assert!(set != u32::MAX);
+
+			let spv_type = parsed_types.iter().find(|&t| t.id == var.type_id).unwrap();
+			let bi = SpvVariableBindingInfo {
+				set,
+				binding,
+				desc_type: vk_descriptor_type_from(&spv_type.op_type),
+			};
+			binding_infos.push(bi);
+		}
+	}
+
+	SpvParsed {
+		shader_stage: shader_stage.unwrap(),
+		variable_binding_infos: binding_infos,
+	}
+}
+
+pub fn parse_file<P: AsRef<Path>>(spv_file_path: P) -> Result<SpvParsed> {
+	let mut spv_file = File::open(&spv_file_path)?;
+	let file_byte_size = spv_file.metadata()?.len();
+
+	if file_byte_size % 4 != 0 {
+		return Err(Error::new(
+			ErrorKind::InvalidData,
+			"Spv file size isn't multple of 4.",
+		));
+	}
+	if file_byte_size > (isize::MAX as u64) {
+		return Err(Error::new(ErrorKind::InvalidData, "Spv file size too big."));
+	}
+
+	const WORD_SIZE: usize = 4;
+	let file_word_size = (file_byte_size as usize) / WORD_SIZE;
+	let mut spv_words = vec![0u32; file_word_size];
+
+	spv_file.read_exact(unsafe {
+		// Soundness:
+		// - spv_words was allocated just above, so it's definitely not null.
+		// - The array pointed to by the casted pointer has length that's equal to the file size.
+		// - The casted pointer is only accessed within this function.
+		// - We checked above that the file size is smaller than isize::MAX.
+		slice::from_raw_parts_mut(
+			spv_words.as_mut_ptr() as *mut u8,
+			file_word_size as usize * WORD_SIZE,
+		)
+	})?;
+
+	// We only support little-endian CPUs.
+	{
+		let x: u32 = 1;
+		let bytes = x.to_ne_bytes();
+		assert!(bytes[0] == 1);
+	}
+
+	const SPV_MAGIC_NUMBER_LITTLE_ENDIAN: u32 = 0x07230203;
+	const SPV_MAGIC_NUMBER_BIG_ENDIAN: u32 = 0x03022307;
+
+	let magic_num = spv_words[0];
+	if magic_num == SPV_MAGIC_NUMBER_LITTLE_ENDIAN {
+		// do nothing
+	} else if magic_num == SPV_MAGIC_NUMBER_BIG_ENDIAN {
+		for w in &mut spv_words {
+			*w = w.swap_bytes();
+		}
+	} else {
+		return Err(Error::new(
+			ErrorKind::InvalidData,
+			"Spv file has invalid magic number.",
+		));
+	}
+
+	Ok(parse_code(&spv_words))
 }
 
 fn shader_stage_from_execution_model(model: ExecutionModel) -> Option<vk::ShaderStageFlags> {
-    match model {
-        ExecutionModel::Vertex => Some(vk::ShaderStageFlags::VERTEX),
-        ExecutionModel::Fragment => Some(vk::ShaderStageFlags::FRAGMENT),
-        ExecutionModel::GLCompute => Some(vk::ShaderStageFlags::COMPUTE),
-        _ => {
-					println!("Unhandled execution model ({:?}) for shader stage.", model);
-					None
-				}
-    }
+	match model {
+		ExecutionModel::Vertex => Some(vk::ShaderStageFlags::VERTEX),
+		ExecutionModel::Fragment => Some(vk::ShaderStageFlags::FRAGMENT),
+		ExecutionModel::GLCompute => Some(vk::ShaderStageFlags::COMPUTE),
+		_ => {
+			println!("Unhandled execution model ({:?}) for shader stage.", model);
+			None
+		}
+	}
 }
 
-fn parse_op_type(instruction: &[u32]) -> Result<SpvType> {
+fn vk_descriptor_type_from(op_type: &OpType) -> vk::DescriptorType {
+	match op_type {
+		OpType::Bool(_) | OpType::Int(_) | OpType::Float(_) | OpType::Struct(_) => {
+			vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
+		}
+		OpType::Image(_) => vk::DescriptorType::STORAGE_IMAGE,
+		OpType::Sampler(_) => vk::DescriptorType::SAMPLER,
+		OpType::SampledImage(_) => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+		_ => panic!("Unsupported OpType to VkDescriptorType conversion."),
+	}
 }
