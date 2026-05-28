@@ -186,7 +186,8 @@ impl Context {
 				.enabled_features(&features)
 				.push_next(&mut vk13_features);
 			unsafe {
-				instance.create_device(physical_device, &device_createinfo, None)
+				instance
+					.create_device(physical_device, &device_createinfo, None)
 					.unwrap()
 			}
 		};

@@ -1,5 +1,5 @@
 mod vulkan;
 
 fn main() {
-    println!("hello triangle");
+	println!("hello triangle");
 }

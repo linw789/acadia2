@@ -5,6 +5,5 @@ pub struct Wsi {
 }
 
 impl Wsi {
-	fn init_surface_swapchain() {
-	}
+	fn init_surface_swapchain() {}
 }
