@@ -10,6 +10,6 @@ pub struct Device {
 }
 
 impl Device {
-	pub fn new(context: &Context, max_frames_in_flight: u64) -> Self {}
+	pub fn new(context: &Context, max_frames_in_flight: u64) {}
 	pub fn request_command_buffer() {}
 }

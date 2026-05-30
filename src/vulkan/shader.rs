@@ -5,12 +5,14 @@ use std::{fs::File, path::Path, rc::Rc};
 const MAX_SET_LAYOUT_COUNT: usize = 6;
 
 pub struct Shader {
+	device: Rc<Device>,
 	stage: vk::ShaderStageFlags,
 	module: vk::ShaderModule,
 	variable_bindings: Vec<spv::VariableBindingInfo>,
 }
 
 pub struct Program {
+	device: Rc<Device>,
 	shaders: Vec<Rc<Shader>>,
 	bind_point: vk::PipelineBindPoint,
 	desc_set_layouts: [vk::DescriptorSetLayout; MAX_SET_LAYOUT_COUNT],
@@ -24,8 +26,8 @@ pub struct ShaderManager {
 }
 
 impl Program {
-	fn from_vert_frag_shaders(
-		device: &Device,
+	fn new(
+		device: Rc<Device>,
 		bind_point: vk::PipelineBindPoint,
 		shaders: Vec<Rc<Shader>>,
 	) -> Self {
@@ -82,11 +84,29 @@ impl Program {
 		};
 
 		Self {
+			device,
 			shaders,
 			bind_point,
 			desc_set_layouts,
 			pipeline_layout,
 		}
+	}
+}
+
+impl Drop for Program {
+	fn drop(&mut self) {
+		for layout in self.desc_set_layouts.iter_mut() {
+			if *layout != vk::DescriptorSetLayout::null() {
+				unsafe { self.device.destroy_descriptor_set_layout(*layout, None); }
+			}
+		}
+		unsafe { self.device.destroy_pipeline_layout(self.pipeline_layout, None); }
+	}
+}
+
+impl Drop for Shader {
+	fn drop(&mut self) {
+		unsafe { self.device.destroy_shader_module(self.module, None); }
 	}
 }
 
@@ -111,6 +131,7 @@ impl ShaderManager {
 
 		let parsed = spv::parse_code(&spv_code);
 		self.shaders.push(Rc::new(Shader {
+			device: Rc::clone(&self.device),
 			stage: parsed.shader_stage,
 			module: shader_module,
 			variable_bindings: parsed.variable_binding_infos,

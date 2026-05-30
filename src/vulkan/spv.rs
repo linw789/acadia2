@@ -382,7 +382,7 @@ pub fn parse_file<P: AsRef<Path>>(spv_file_path: P) -> Result<Parsed> {
 
 	let magic_num = spv_words[0];
 	if magic_num == SPV_MAGIC_NUMBER_LITTLE_ENDIAN {
-		// do nothing
+		// noop
 	} else if magic_num == SPV_MAGIC_NUMBER_BIG_ENDIAN {
 		for w in &mut spv_words {
 			*w = w.swap_bytes();
