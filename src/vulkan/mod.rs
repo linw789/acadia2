@@ -4,3 +4,4 @@ pub mod frame;
 pub mod shader;
 pub mod spv;
 pub mod wsi;
+pub mod cmdbuf;
