@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 const MAX_VERTEX_BUFFER_COUNT: usize = 4;
 const MAX_VERTEX_ATTRIBUTE_COUNT: usize = 16;
+const MAX_ATTACHMENT_COUNT: usize = 8;
 
 struct PipelineState {
 	program: Rc<Program>,
@@ -52,16 +53,14 @@ impl PipelineState {
 		// depth  stencil state
 
 		// vertex input
+		let mut vertex_attri_descs = [vk::VertexInputAttributeDescription::default(); MAX_VERTEX_ATTRIBUTE_COUNT];
+		let mut vertex_binding_descs = [vk::VertexInputBindingDescription::default(); MAX_VERTEX_BUFFER_COUNT];
 		let mut vertex_input_state = vk::PipelineVertexInputStateCreateInfo::default();
 		if let Some(vert_shader) = self.program.get_vertex_shader() {
 			let input_location_mask = vert_shader.input_location_mask;
 
-			let mut vertex_attrib_desc_count = 0;
-			let mut vertex_attri_descs =
-				[vk::VertexInputAttributeDescription::default(); MAX_VERTEX_ATTRIBUTE_COUNT];
-
 			let mut vertex_binding_mask = 0;
-
+			let mut vertex_attrib_desc_count = 0;
 			for attrib_index in 0..MAX_VERTEX_ATTRIBUTE_COUNT {
 				if (input_location_mask & (1 << attrib_index)) != 0 {
 					let attrib = &self.vertex_attributes[attrib_index as usize];
@@ -76,8 +75,6 @@ impl PipelineState {
 			}
 
 			let mut vertex_binding_desc_count = 0;
-			let mut vertex_binding_descs =
-				[vk::VertexInputBindingDescription::default(); MAX_VERTEX_BUFFER_COUNT];
 			for buf_index in 0..MAX_VERTEX_BUFFER_COUNT {
 				if (vertex_binding_mask & (1 << buf_index)) != 0 {
 					let binding_desc = &mut vertex_binding_descs[vertex_binding_desc_count];
@@ -94,8 +91,8 @@ impl PipelineState {
 		}
 
 		// blend state
-
-
+		let color_attachment_state = [vk::PipelineColorBlendAttachmentState::default(); MAX_ATTACHMENT_COUNT];
+		let color_blend_state = vk::PipelineColorBlendStateCreateInfo::default();
 
 		vk::Pipeline::default()
 	}

@@ -85,7 +85,8 @@ pub struct VariableBindingInfo {
 pub struct Parsed {
 	pub shader_stage: vk::ShaderStageFlags,
 	pub variable_binding_infos: Vec<VariableBindingInfo>,
-	pub input_location_mask: u32, // Each bit represents a used location.
+	pub input_location_mask: u32, // Each bit represents a used location for vertex input.
+	pub output_location_mask: u32, // Each bit represents a used location for fragment output.
 }
 
 pub fn parse_code(spv_code: &[u32]) -> Parsed {
@@ -98,6 +99,7 @@ pub fn parse_code(spv_code: &[u32]) -> Parsed {
 	let mut parsed_constants: Vec<ConstantInfo> = Vec::new();
 	let mut parsed_variables: Vec<VariableInfo> = Vec::new();
 	let mut input_location_mask: u32 = 0;
+	let mut output_location_mask: u32 = 0;
 
 	let mut word_pos = 5;
 	while word_pos < spv_code.len() {
@@ -133,7 +135,15 @@ pub fn parse_code(spv_code: &[u32]) -> Parsed {
 					}
 					Decoration::Location => {
 						debug_assert!(word_count == 4);
-						input_location_mask |= 1 << instruction[3];
+						if let Some(stage) = shader_stage {
+							match stage {
+								vk::ShaderStageFlags::VERTEX => input_location_mask |= 1 << instruction[3],
+								vk::ShaderStageFlags::FRAGMENT => output_location_mask |= 1 << instruction[3],
+								_ => (),
+							}
+						} else {
+							panic!("Parsing location decoration without knowing the shader stage.");
+						}
 					}
 					_ => (),
 				}
@@ -336,6 +346,7 @@ pub fn parse_code(spv_code: &[u32]) -> Parsed {
 		shader_stage: shader_stage.unwrap(),
 		variable_binding_infos: binding_infos,
 		input_location_mask,
+		output_location_mask,
 	}
 }
 
