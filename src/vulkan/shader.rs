@@ -9,6 +9,7 @@ pub struct Shader {
 	stage: vk::ShaderStageFlags,
 	module: vk::ShaderModule,
 	variable_bindings: Vec<spv::VariableBindingInfo>,
+	pub input_location_mask: u32,
 }
 
 pub struct Program {
@@ -91,6 +92,10 @@ impl Program {
 			pipeline_layout,
 		}
 	}
+
+	pub fn get_vertex_shader(&self) -> Option<Rc<Shader>> {
+		self.shaders.iter().find(|s| s.stage == vk::ShaderStageFlags::VERTEX).cloned()
+	}
 }
 
 impl Drop for Program {
@@ -135,6 +140,7 @@ impl ShaderManager {
 			stage: parsed.shader_stage,
 			module: shader_module,
 			variable_bindings: parsed.variable_binding_infos,
+			input_location_mask: parsed.input_location_mask,
 		}));
 	}
 }

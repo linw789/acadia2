@@ -5,3 +5,4 @@ pub mod shader;
 pub mod spv;
 pub mod wsi;
 pub mod cmdbuf;
+pub mod pipeline;
