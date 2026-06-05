@@ -6,18 +6,19 @@ const MAX_SET_LAYOUT_COUNT: usize = 6;
 
 pub struct Shader {
 	device: Rc<Device>,
-	stage: vk::ShaderStageFlags,
-	module: vk::ShaderModule,
+	pub stage: vk::ShaderStageFlags,
+	pub module: vk::ShaderModule,
 	variable_bindings: Vec<spv::VariableBindingInfo>,
 	pub input_location_mask: u32,
+	pub output_location_mask: u32,
 }
 
 pub struct Program {
 	device: Rc<Device>,
-	shaders: Vec<Rc<Shader>>,
+	pub shaders: Vec<Rc<Shader>>,
 	bind_point: vk::PipelineBindPoint,
 	desc_set_layouts: [vk::DescriptorSetLayout; MAX_SET_LAYOUT_COUNT],
-	pipeline_layout: vk::PipelineLayout,
+	pub pipeline_layout: vk::PipelineLayout,
 }
 
 pub struct ShaderManager {
@@ -96,6 +97,10 @@ impl Program {
 	pub fn get_vertex_shader(&self) -> Option<Rc<Shader>> {
 		self.shaders.iter().find(|s| s.stage == vk::ShaderStageFlags::VERTEX).cloned()
 	}
+
+	pub fn get_fragment_shader(&self) -> Option<Rc<Shader>> {
+		self.shaders.iter().find(|s| s.stage == vk::ShaderStageFlags::FRAGMENT).cloned()
+	}
 }
 
 impl Drop for Program {
@@ -141,6 +146,7 @@ impl ShaderManager {
 			module: shader_module,
 			variable_bindings: parsed.variable_binding_infos,
 			input_location_mask: parsed.input_location_mask,
+			output_location_mask: parsed.output_location_mask,
 		}));
 	}
 }

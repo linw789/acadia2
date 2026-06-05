@@ -9,10 +9,6 @@ struct CmdBuf {
 }
 
 impl CmdBuf {
-	pub fn set_graphics_program<P: AsRef<Path>>(vert_spv_path: P, frag_spv_path: P) {
-
-	}
-
 	pub fn render_begin() {
 	}
 
@@ -23,4 +19,6 @@ impl CmdBuf {
 		// TODO: check if self alreayd has a program.
 		self.program = program;
 	}
+
+	fn set_vertex_binding() {}
 }

@@ -1,6 +1,6 @@
 use ash::{Device, vk};
 
-/// Frame holds resources needed for each frame.
+/// `Frame` holds resources needed for each frame.
 pub struct Frame {
 	present_acquired_semaphore: vk::Semaphore,
 	render_complete_semaphre: vk::Semaphore,
