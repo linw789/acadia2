@@ -2,9 +2,9 @@ use ash::{
 	Device, Entry, Instance,
 	ext::debug_utils,
 	khr::{surface, swapchain},
-	vk::{self, PhysicalDevice},
+	vk::{self, PhysicalDevice, PhysicalDeviceMemoryProperties},
 };
-use std::{borrow::Cow, ffi::CStr};
+use std::{borrow::Cow, ffi::CStr, rc::Rc};
 use winit::{
 	raw_window_handle::{HasDisplayHandle, HasWindowHandle},
 	window::Window,
@@ -50,14 +50,15 @@ extern "system" fn vulkan_debug_callback(
 pub struct Context {
 	instance: Instance,
 	physical_device: PhysicalDevice,
-	device: Device,
+	device: Rc<Device>,
+	physical_device_mem_props: PhysicalDeviceMemoryProperties,
 
 	debug_utils_instance: debug_utils::Instance,
 	debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
 impl Context {
-	pub fn new(window: &Window) -> Self {
+	pub fn new(window: &Window, surface: vk::SurfaceKHR) -> Self {
 		// Initialize vulkan instance.
 
 		let entry = Entry::linked();
@@ -192,13 +193,28 @@ impl Context {
 			}
 		};
 
+		let physical_device_mem_props =
+			unsafe { instance.get_physical_device_memory_properties(physical_device) };
+
 		Self {
 			instance,
 			physical_device,
-			device,
+			device: Rc::new(device),
+			physical_device_mem_props,
 
 			debug_utils_instance,
 			debug_messenger,
+		}
+	}
+}
+
+impl Drop for Context {
+	fn drop(&mut self) {
+		unsafe {
+			self.device.destroy_device(None);
+			self.debug_utils_instance
+				.destroy_debug_utils_messenger(self.debug_messenger, None);
+			self.instance.destroy_instance(None);
 		}
 	}
 }
