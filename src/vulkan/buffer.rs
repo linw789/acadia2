@@ -24,6 +24,13 @@ pub struct Buffer {
 	ptr: RefCell<Pointer>,
 }
 
+/// `BufferWriter` allows sequential writing into `Buffer` objects of difference sizes without
+/// explicitly managing offset.
+pub struct BufferWriter<'a> {
+	offset: u64,
+	ptr: RefMut<'a, Pointer>,
+}
+
 impl Pointer {
 	fn copy_value<T: bytemuck::Pod>(&mut self, offset: u64, data: &T) {
 		assert!(
@@ -101,6 +108,13 @@ impl Buffer {
 			ptr: RefCell::new(Pointer { size, ptr }),
 		}
 	}
+
+	pub fn buffer_writer(&self, start_offset: u64) -> BufferWriter {
+		BufferWriter {
+			offset: start_offset,
+			ptr: self.ptr.borrow_mut(),
+		}
+	}
 }
 
 impl Drop for Buffer {
@@ -111,3 +125,16 @@ impl Drop for Buffer {
 		}
 	}
 }
+
+impl<'a> BufferWriter<'a> {
+	pub fn write_value<T: bytemuck::Pod>(&mut self, val: &T) {
+		self.ptr.copy_value(self.offset, val);
+		self.offset += size_of::<T>() as u64;
+	}
+
+	pub fn write_slice<T: bytemuck::Pod>(&mut self, slice: &[T]) {
+		self.ptr.copy_slice(self.offset, slice);
+		self.offset += (size_of::<T>() * slice.len()) as u64;
+	}
+}
+
