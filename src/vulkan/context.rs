@@ -118,17 +118,6 @@ impl Context {
 
 		// Initialize vulkan device.
 
-		let surface = unsafe {
-			ash_window::create_surface(
-				&entry,
-				&instance,
-				window.display_handle().unwrap().as_raw(),
-				window.window_handle().unwrap().as_raw(),
-				None,
-			)
-			.unwrap()
-		};
-
 		let surface_loader = surface::Instance::new(&entry, &instance);
 
 		let (physical_device, graphics_queue_family_index) = unsafe {
