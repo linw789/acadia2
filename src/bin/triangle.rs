@@ -22,5 +22,6 @@ impl Triangle {
 }
 
 fn main() {
+	println!("hello triangle!");
 }
 

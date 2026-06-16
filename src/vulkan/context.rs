@@ -2,13 +2,10 @@ use ash::{
 	Device, Entry, Instance,
 	ext::debug_utils,
 	khr::{surface, swapchain},
-	vk::{self, PhysicalDevice, PhysicalDeviceMemoryProperties},
+	vk::{self, PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceMemoryProperties},
 };
 use std::{borrow::Cow, ffi::CStr, rc::Rc};
-use winit::{
-	raw_window_handle::{HasDisplayHandle, HasWindowHandle},
-	window::Window,
-};
+use winit::{raw_window_handle::HasDisplayHandle, window::Window};
 
 #[cfg(feature = "vulkan_debug")]
 extern "system" fn vulkan_debug_callback(
@@ -48,17 +45,19 @@ extern "system" fn vulkan_debug_callback(
 }
 
 pub struct Context {
-	instance: Instance,
-	physical_device: PhysicalDevice,
-	device: Rc<Device>,
-	physical_device_mem_props: PhysicalDeviceMemoryProperties,
+	pub entry: Entry,
+	pub instance: Instance,
+	pub physical_device: PhysicalDevice,
+	pub physical_device_mem_props: PhysicalDeviceMemoryProperties,
+	pub physical_device_features: PhysicalDeviceFeatures,
+	pub graphics_family_queue_index: u32,
 
 	debug_utils_instance: debug_utils::Instance,
 	debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
 impl Context {
-	pub fn new(window: &Window, surface: vk::SurfaceKHR) -> Self {
+	pub fn new(window: &Window) -> Self {
 		// Initialize vulkan instance.
 
 		let entry = Entry::linked();
@@ -116,16 +115,56 @@ impl Context {
 			(debug_util_instance, debug_messenger)
 		};
 
-		// Initialize vulkan device.
+		// let device = {
+		// 	let device_extension_names_raw = [swapchain::NAME.as_ptr()];
+		// 	let features = vk::PhysicalDeviceFeatures::default()
+		// 		.shader_clip_distance(true)
+		// 		.sampler_anisotropy(true)
+		// 		.wide_lines(true);
+		// 	let mut vk13_features = vk::PhysicalDeviceVulkan13Features::default()
+		// 		.synchronization2(true)
+		// 		.dynamic_rendering(true);
 
-		let surface_loader = surface::Instance::new(&entry, &instance);
+		// 	let priorities = [1.0];
+		// 	let queue_info = vk::DeviceQueueCreateInfo::default()
+		// 		.queue_family_index(graphics_queue_family_index)
+		// 		.queue_priorities(&priorities);
+		// 	let device_createinfo = vk::DeviceCreateInfo::default()
+		// 		.queue_create_infos(std::slice::from_ref(&queue_info))
+		// 		.enabled_extension_names(&device_extension_names_raw)
+		// 		.enabled_features(&features)
+		// 		.push_next(&mut vk13_features);
+		// 	unsafe {
+		// 		instance
+		// 			.create_device(physical_device, &device_createinfo, None)
+		// 			.unwrap()
+		// 	}
+		// };
+
+		Self {
+			entry,
+			instance,
+			physical_device: PhysicalDevice::null(),
+			physical_device_mem_props: PhysicalDeviceMemoryProperties::default(),
+			physical_device_features: PhysicalDeviceFeatures::default(),
+			graphics_family_queue_index: u32::MAX,
+
+			debug_utils_instance,
+			debug_messenger,
+		}
+	}
+
+	pub fn init_physical_device(&mut self, surface: vk::SurfaceKHR) {
+		// Initialize vulkan physical device.
+
+		let surface_loader = surface::Instance::new(&self.entry, &self.instance);
 
 		let (physical_device, graphics_queue_family_index) = unsafe {
-			let physical_devices = instance.enumerate_physical_devices().unwrap();
+			let physical_devices = self.instance.enumerate_physical_devices().unwrap();
 			let (physical_device, graphics_queue_family_index) = physical_devices
 				.iter()
 				.find_map(|physical_device| {
-					instance
+					self.instance
 						.get_physical_device_queue_family_properties(*physical_device)
 						.iter()
 						.enumerate()
@@ -151,56 +190,23 @@ impl Context {
 			(physical_device, graphics_queue_family_index as u32)
 		};
 
-		unsafe {
-			let features = instance.get_physical_device_features(physical_device);
-			assert!(features.sampler_anisotropy == 1);
-		}
+		let features = unsafe { self.instance.get_physical_device_features(physical_device) };
 
-		let device = {
-			let device_extension_names_raw = [swapchain::NAME.as_ptr()];
-			let features = vk::PhysicalDeviceFeatures::default()
-				.shader_clip_distance(true)
-				.sampler_anisotropy(true)
-				.wide_lines(true);
-			let mut vk13_features = vk::PhysicalDeviceVulkan13Features::default()
-				.synchronization2(true)
-				.dynamic_rendering(true);
-
-			let priorities = [1.0];
-			let queue_info = vk::DeviceQueueCreateInfo::default()
-				.queue_family_index(graphics_queue_family_index)
-				.queue_priorities(&priorities);
-			let device_createinfo = vk::DeviceCreateInfo::default()
-				.queue_create_infos(std::slice::from_ref(&queue_info))
-				.enabled_extension_names(&device_extension_names_raw)
-				.enabled_features(&features)
-				.push_next(&mut vk13_features);
-			unsafe {
-				instance
-					.create_device(physical_device, &device_createinfo, None)
-					.unwrap()
-			}
+		let physical_device_mem_props = unsafe {
+			self.instance
+				.get_physical_device_memory_properties(physical_device)
 		};
 
-		let physical_device_mem_props =
-			unsafe { instance.get_physical_device_memory_properties(physical_device) };
-
-		Self {
-			instance,
-			physical_device,
-			device: Rc::new(device),
-			physical_device_mem_props,
-
-			debug_utils_instance,
-			debug_messenger,
-		}
+		self.physical_device = physical_device;
+		self.physical_device_mem_props = physical_device_mem_props;
+		self.physical_device_features = features;
+		self.graphics_family_queue_index = graphics_queue_family_index;
 	}
 }
 
 impl Drop for Context {
 	fn drop(&mut self) {
 		unsafe {
-			self.device.destroy_device(None);
 			self.debug_utils_instance
 				.destroy_debug_utils_messenger(self.debug_messenger, None);
 			self.instance.destroy_instance(None);

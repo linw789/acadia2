@@ -1,5 +1,5 @@
-use std::{path::Path, rc::Rc};
-use crate::vulkan::{buffer::{Buffer, BufferWriter}, shader::Program};
+use std::rc::Rc;
+use crate::vulkan::{buffer::{Buffer}, shader::Program};
 use ash::{Device, vk::{self, PhysicalDeviceMemoryProperties}};
 
 struct CmdBuf {
