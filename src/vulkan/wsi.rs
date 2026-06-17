@@ -23,18 +23,17 @@ pub struct Wsi {
 	surface_capabilities: vk::SurfaceCapabilitiesKHR,
 
 	swapchain_loader: swapchain::Device,
-	swapchain: Option<vk::SwapchainKHR>,
+	swapchain: vk::SwapchainKHR,
 	// Swapchain's images used for presenting.
 	present_images: Vec<vk::Image>,
 	// Signal when present images have been acquired.
 	present_acquired_semaphores: Vec<vk::Semaphore>,
 
-	swapchain_width: u32,
-	swapchain_height: u32,
+	swapchain_extent: vk::Extent2D,
 }
 
 impl Wsi {
-	pub fn new(window: &Window, swapchain_width: u32, swapchain_height: u32) -> Self {
+	pub fn new(window: &Window) -> Self {
 		let mut context = Context::new(window);
 
 		// Create surface.
@@ -88,9 +87,13 @@ impl Wsi {
 		let surface_loader = khr::surface::Instance::new(&context.entry, &context.instance);
 		let swapchain_loader = swapchain::Device::new(&context.instance, &device);
 
-		let surface_format = unsafe {
-			surface_loader.get_physical_device_surface_formats(context.physical_device, surface).unwrap()
+		let surface_formats = unsafe {
+			surface_loader
+				.get_physical_device_surface_formats(context.physical_device, surface)
+				.unwrap()
 		};
+		let surface_format = pick_surface_format(&surface_formats);
+
 		let surface_capabilities = unsafe {
 			surface_loader
 				.get_physical_device_surface_capabilities(context.physical_device, surface)
@@ -98,7 +101,8 @@ impl Wsi {
 		};
 
 		let present_mode = unsafe {
-			surface_loader.get_physical_device_surface_present_modes(context.physical_device, surface)
+			surface_loader
+				.get_physical_device_surface_present_modes(context.physical_device, surface)
 				.unwrap()
 				.iter()
 				.find(|&&mode| mode == vk::PresentModeKHR::MAILBOX)
@@ -108,17 +112,31 @@ impl Wsi {
 
 		// Create swapchain.
 
+		let swapchain_extent = vk::Extent2D {
+			width: window.inner_size().width,
+			height: window.inner_size().height,
+		};
 		let swapchain_loader = swapchain::Device::new(&context.instance, &device);
 		let swapchain = create_swapchain(
 			&swapchain_loader,
 			surface,
+			&surface_format,
+			&surface_capabilities,
+			present_mode,
+			swapchain_extent,
+		);
 
+		let present_images = unsafe { swapchain_loader.get_swapchain_images(swapchain).unwrap() };
 
-
-		Self { context, surface, device,
+		Self {
+			context,
+			surface,
+			device,
 			surface_loader,
 			surface_format,
 			surface_capabilities,
+			swapchain_loader,
+			swapchain,
 		}
 	}
 }
@@ -126,44 +144,43 @@ impl Wsi {
 fn create_swapchain(
 	loader: &swapchain::Device,
 	surface: vk::SurfaceKHR,
-	surface_format: vk::SurfaceFormatKHR,
+	surface_format: &vk::SurfaceFormatKHR,
 	surface_capabilities: &vk::SurfaceCapabilitiesKHR,
 	present_mode: vk::PresentModeKHR,
 	image_extent: vk::Extent2D,
 ) -> vk::SwapchainKHR {
 	// 0 means there is no limit on max image count.
 	let max_image_count = if surface_capabilities.max_image_count == 0 {
-			u32::MAX
+		u32::MAX
 	} else {
-			surface_capabilities.max_image_count
+		surface_capabilities.max_image_count
 	};
 
-	let desired_image_count =
-			u32::min(surface_capabilities.min_image_count + 1, max_image_count);
+	let desired_image_count = u32::min(surface_capabilities.min_image_count + 1, max_image_count);
 
 	let min_image_extent = surface_capabilities.min_image_extent;
 	let max_image_extent = surface_capabilities.max_image_extent;
 	let actual_image_extent = match surface_capabilities.current_extent.width {
-			u32::MAX => image_extent,
-			_ => vk::Extent2D {
-					width: u32::min(
-							u32::max(min_image_extent.width, image_extent.width),
-							max_image_extent.width,
-					),
-					height: u32::min(
-							u32::max(min_image_extent.height, image_extent.height),
-							max_image_extent.height,
-					),
-			},
+		u32::MAX => image_extent,
+		_ => vk::Extent2D {
+			width: u32::min(
+				u32::max(min_image_extent.width, image_extent.width),
+				max_image_extent.width,
+			),
+			height: u32::min(
+				u32::max(min_image_extent.height, image_extent.height),
+				max_image_extent.height,
+			),
+		},
 	};
 
 	let pre_transform = if surface_capabilities
-			.supported_transforms
-			.contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
+		.supported_transforms
+		.contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
 	{
-			vk::SurfaceTransformFlagsKHR::IDENTITY
+		vk::SurfaceTransformFlagsKHR::IDENTITY
 	} else {
-			surface_capabilities.current_transform
+		surface_capabilities.current_transform
 	};
 
 	let swapchain_createinfo = vk::SwapchainCreateInfoKHR::default()
@@ -183,7 +200,28 @@ fn create_swapchain(
 		.old_swapchain(vk::SwapchainKHR::null());
 
 	let swapchain = {
-		unsafe { loader.create_swapchain(&swapchain_createinfo, None).unwrap() }
+		unsafe {
+			loader
+				.create_swapchain(&swapchain_createinfo, None)
+				.unwrap()
+		}
 	};
 	swapchain
+}
+
+fn pick_surface_format(formats: &[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR {
+	let mut format_index = 0;
+	for (i, sf) in formats.iter().enumerate() {
+		if (sf.format == vk::Format::R8G8B8A8_UNORM) || (sf.format == vk::Format::B8G8R8A8_UNORM) {
+			format_index = i;
+			break;
+		}
+	}
+
+	let result = formats[format_index];
+	assert!(
+		result.format != vk::Format::UNDEFINED,
+		"Failed to find a proper surface format."
+	);
+	result
 }
