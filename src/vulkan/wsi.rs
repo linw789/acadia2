@@ -13,6 +13,8 @@ use winit::{
 	window::Window,
 };
 
+pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
+
 pub struct Wsi {
 	context: Context,
 	surface: vk::SurfaceKHR,
@@ -24,12 +26,11 @@ pub struct Wsi {
 
 	swapchain_loader: swapchain::Device,
 	swapchain: vk::SwapchainKHR,
+	swapchain_extent: vk::Extent2D,
 	// Swapchain's images used for presenting.
 	present_images: Vec<vk::Image>,
-	// Signal when present images have been acquired.
-	present_acquired_semaphores: Vec<vk::Semaphore>,
-
-	swapchain_extent: vk::Extent2D,
+	// Signal when a present image is ready to write to.
+	present_image_ready_semaphores: Vec<vk::Semaphore>,
 }
 
 impl Wsi {
@@ -128,6 +129,15 @@ impl Wsi {
 
 		let present_images = unsafe { swapchain_loader.get_swapchain_images(swapchain).unwrap() };
 
+		let mut present_image_ready_semaphores = Vec::new();
+		for _ in 0..MAX_FRAMES_IN_FLIGHT {
+			let createinfo = vk::SemaphoreCreateInfo::default();
+			unsafe {
+				present_image_ready_semaphores
+					.push(device.create_semaphore(&createinfo, None).unwrap())
+			};
+		}
+
 		Self {
 			context,
 			surface,
@@ -137,6 +147,9 @@ impl Wsi {
 			surface_capabilities,
 			swapchain_loader,
 			swapchain,
+			swapchain_extent,
+			present_images,
+			present_image_ready_semaphores,
 		}
 	}
 }
