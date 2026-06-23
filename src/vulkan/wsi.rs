@@ -31,6 +31,8 @@ pub struct Wsi {
 	present_images: Vec<vk::Image>,
 	// Signal when a present image is ready to write to.
 	present_image_ready_semaphores: Vec<vk::Semaphore>,
+	// Signal when GPU finishes writing to a present image.
+	render_complete_semaphores: Vec<vk::Semaphore>,
 }
 
 impl Wsi {
@@ -138,6 +140,14 @@ impl Wsi {
 			};
 		}
 
+		let mut render_complete_semaphores = Vec::new();
+		for _ in 0..MAX_FRAMES_IN_FLIGHT {
+			let createinfo = vk::SemaphoreCreateInfo::default();
+			unsafe {
+				render_complete_semaphores.push(device.create_semaphore(&createinfo, None).unwrap())
+			};
+		}
+
 		Self {
 			context,
 			surface,
@@ -150,6 +160,18 @@ impl Wsi {
 			swapchain_extent,
 			present_images,
 			present_image_ready_semaphores,
+			render_complete_semaphores,
+		}
+	}
+}
+
+impl Drop for Wsi {
+	fn drop(&mut self) {
+		unsafe {
+			self.swapchain_loader
+				.destroy_swapchain(self.swapchain, None);
+			self.surface_loader.destroy_surface(self.surface, None);
+			self.device.destroy_device(None);
 		}
 	}
 }
