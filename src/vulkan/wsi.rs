@@ -141,7 +141,7 @@ impl Wsi {
 		}
 
 		let mut render_complete_semaphores = Vec::new();
-		for _ in 0..MAX_FRAMES_IN_FLIGHT {
+		for _ in 0..present_images.len() {
 			let createinfo = vk::SemaphoreCreateInfo::default();
 			unsafe {
 				render_complete_semaphores.push(device.create_semaphore(&createinfo, None).unwrap())
