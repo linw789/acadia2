@@ -1,6 +1,6 @@
-use std::rc::Rc;
-use crate::vulkan::{buffer::{Buffer}, shader::Program};
 use ash::{Device, vk::{self, PhysicalDeviceMemoryProperties}};
+use crate::vulkan::{buffer::{Buffer}, shader::Program};
+use std::rc::Rc;
 
 struct CmdBuf {
 	device: Rc<Device>,
@@ -26,10 +26,10 @@ impl CmdBuf {
 	pub fn allocate_vertex_data(binding: u32, size: u64, stride: u64, input_rate: vk::VertexInputRate, data: &[u8]) {
 	}
 
-	pub fn render_begin() {
+	pub fn begin_rendering() {
 	}
 
-	pub fn render_end() {
+	pub fn end_rendering() {
 	}
 
 	fn set_program(&mut self, program: Rc<Program>) {

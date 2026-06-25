@@ -44,7 +44,7 @@ extern "system" fn vulkan_debug_callback(
 	vk::FALSE
 }
 
-pub struct Context {
+pub struct Base {
 	pub entry: Entry,
 	pub instance: Instance,
 	pub physical_device: PhysicalDevice,
@@ -56,7 +56,7 @@ pub struct Context {
 	debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
-impl Context {
+impl Base {
 	pub fn new(window: &Window) -> Self {
 		// Initialize vulkan instance.
 
@@ -204,7 +204,7 @@ impl Context {
 	}
 }
 
-impl Drop for Context {
+impl Drop for Base {
 	fn drop(&mut self) {
 		unsafe {
 			self.debug_utils_instance

@@ -1,6 +1,6 @@
-use crate::vulkan::context::Context;
+use crate::vulkan::base::Base;
 use ash::{
-	Device, Entry, Instance,
+	Device,
 	khr::{self, swapchain},
 	vk,
 };
@@ -16,7 +16,7 @@ use winit::{
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 pub struct Wsi {
-	context: Context,
+	context: Base,
 	surface: vk::SurfaceKHR,
 	device: Rc<Device>,
 
@@ -33,11 +33,15 @@ pub struct Wsi {
 	present_image_ready_semaphores: Vec<vk::Semaphore>,
 	// Signal when GPU finishes writing to a present image.
 	render_complete_semaphores: Vec<vk::Semaphore>,
+
+	frame_fences: Vec<vk::Fence>,
+
+	frame_count: u64,
 }
 
 impl Wsi {
 	pub fn new(window: &Window) -> Self {
-		let mut context = Context::new(window);
+		let mut context = Base::new(window);
 
 		// Create surface.
 
@@ -134,18 +138,21 @@ impl Wsi {
 		let mut present_image_ready_semaphores = Vec::new();
 		for _ in 0..MAX_FRAMES_IN_FLIGHT {
 			let createinfo = vk::SemaphoreCreateInfo::default();
-			unsafe {
-				present_image_ready_semaphores
-					.push(device.create_semaphore(&createinfo, None).unwrap())
-			};
+			unsafe { present_image_ready_semaphores.push(device.create_semaphore(&createinfo, None).unwrap()) };
 		}
 
 		let mut render_complete_semaphores = Vec::new();
 		for _ in 0..present_images.len() {
 			let createinfo = vk::SemaphoreCreateInfo::default();
+			unsafe { render_complete_semaphores.push(device.create_semaphore(&createinfo, None).unwrap()) };
+		}
+
+		let mut frame_fences = Vec::new();
+		for _ in 0..MAX_FRAMES_IN_FLIGHT {
+			let createinfo = vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED);
 			unsafe {
-				render_complete_semaphores.push(device.create_semaphore(&createinfo, None).unwrap())
-			};
+				frame_fences.push(device.create_fence(&createinfo, None).unwrap());
+			}
 		}
 
 		Self {
@@ -161,15 +168,40 @@ impl Wsi {
 			present_images,
 			present_image_ready_semaphores,
 			render_complete_semaphores,
+			frame_count: 0,
+			frame_fences,
 		}
 	}
+
+	pub fn begin_frame(&mut self) {
+		let in_flight_frame_index = (self.frame_count % (MAX_FRAMES_IN_FLIGHT as u64)) as usize;
+		let present_image_ready_semaphore = self.present_image_ready_semaphores[in_flight_frame_index];
+		let frame_fence = self.frame_fences[in_flight_frame_index];
+
+		unsafe {
+			self.device.wait_for_fences(&[frame_fence], true, u64::MAX).unwrap();
+			self.device.reset_fences(&[frame_fence]).unwrap();
+		}
+
+		let present_image_index = unsafe {
+			self.swapchain_loader
+				.acquire_next_image(
+					self.swapchain,
+					u64::MAX,
+					present_image_ready_semaphore,
+					vk::Fence::null(),
+				)
+				.unwrap()
+		};
+	}
+
+	pub fn end_frame(&mut self) {}
 }
 
 impl Drop for Wsi {
 	fn drop(&mut self) {
 		unsafe {
-			self.swapchain_loader
-				.destroy_swapchain(self.swapchain, None);
+			self.swapchain_loader.destroy_swapchain(self.swapchain, None);
 			self.surface_loader.destroy_surface(self.surface, None);
 			self.device.destroy_device(None);
 		}
@@ -234,13 +266,7 @@ fn create_swapchain(
 		// TODO: handle swapchain re-creation.
 		.old_swapchain(vk::SwapchainKHR::null());
 
-	let swapchain = {
-		unsafe {
-			loader
-				.create_swapchain(&swapchain_createinfo, None)
-				.unwrap()
-		}
-	};
+	let swapchain = { unsafe { loader.create_swapchain(&swapchain_createinfo, None).unwrap() } };
 	swapchain
 }
 
