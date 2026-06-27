@@ -202,10 +202,8 @@ impl Base {
 		self.physical_device_features = features;
 		self.graphics_family_queue_index = graphics_queue_family_index;
 	}
-}
 
-impl Drop for Base {
-	fn drop(&mut self) {
+	pub fn destruct(&mut self) {
 		unsafe {
 			self.debug_utils_instance
 				.destroy_debug_utils_messenger(self.debug_messenger, None);

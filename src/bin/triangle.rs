@@ -1,5 +1,5 @@
 use glam::{vec3, vec4};
-use acadia::vulkan::wsi::Wsi;
+use acadia::renderer::Renderer;
 use ::winit::{
 	application::ApplicationHandler,
 	dpi::PhysicalSize,
@@ -12,6 +12,8 @@ struct Triangle {
 	window: Option<Window>,
 	window_size: PhysicalSize<u32>,
 	exit_requested: bool,
+
+	renderer: Option<Renderer>,
 }
 
 impl Triangle {
@@ -20,8 +22,14 @@ impl Triangle {
 			window: None,
 			window_size: PhysicalSize { width: 640, height: 480, },
 			exit_requested: false,
+			renderer: None,
 		}
 	}
+
+	fn init_renderer(&mut self) {
+		self.renderer = Some(Renderer::new(self.window.as_ref().unwrap()));
+	}
+
 	fn draw_frame(&mut self) {
 		let vertices = [
 			vec3(-1.0, -1.0, 0.0),

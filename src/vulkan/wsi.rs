@@ -4,22 +4,14 @@ use ash::{
 	khr::{self, swapchain},
 	vk,
 };
-use std::{
-	io::{Error, ErrorKind, Result},
-	rc::Rc,
-};
-use winit::{
-	raw_window_handle::{HasDisplayHandle, HasWindowHandle},
-	window::Window,
-};
+use std::rc::Rc;
 
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 pub struct Wsi {
-	context: Base,
-	surface: vk::SurfaceKHR,
 	device: Rc<Device>,
 
+	surface: vk::SurfaceKHR,
 	surface_loader: khr::surface::Instance,
 	surface_format: vk::SurfaceFormatKHR,
 	surface_capabilities: vk::SurfaceCapabilitiesKHR,
@@ -40,76 +32,25 @@ pub struct Wsi {
 }
 
 impl Wsi {
-	pub fn new(window: &Window) -> Self {
-		let mut context = Base::new(window);
-
-		// Create surface.
-
-		let surface = unsafe {
-			ash_window::create_surface(
-				&context.entry,
-				&context.instance,
-				window.display_handle().unwrap().as_raw(),
-				window.window_handle().unwrap().as_raw(),
-				None,
-			)
-			.unwrap()
-		};
-
-		context.init_physical_device(surface);
-
-		// Create logical device.
-
-		let device = {
-			let device_extension_names_raw = [khr::swapchain::NAME.as_ptr()];
-			let features = vk::PhysicalDeviceFeatures::default()
-				.shader_clip_distance(true)
-				.sampler_anisotropy(true)
-				.wide_lines(true);
-			let mut vk13_features = vk::PhysicalDeviceVulkan13Features::default()
-				.synchronization2(true)
-				.dynamic_rendering(true);
-
-			let priorities = [1.0];
-			let queue_info = vk::DeviceQueueCreateInfo::default()
-				.queue_family_index(context.graphics_family_queue_index)
-				.queue_priorities(&priorities);
-			let device_createinfo = vk::DeviceCreateInfo::default()
-				.queue_create_infos(std::slice::from_ref(&queue_info))
-				.enabled_extension_names(&device_extension_names_raw)
-				.enabled_features(&features)
-				.push_next(&mut vk13_features);
-			unsafe {
-				Rc::new(
-					context
-						.instance
-						.create_device(context.physical_device, &device_createinfo, None)
-						.unwrap(),
-				)
-			}
-		};
-
-		// Create swapchain.
-
-		let surface_loader = khr::surface::Instance::new(&context.entry, &context.instance);
-		let swapchain_loader = swapchain::Device::new(&context.instance, &device);
+	pub fn new(surface: vk::SurfaceKHR, swapchain_extent: vk::Extent2D, base: &Base, device: Rc<Device>) -> Self {
+		let surface_loader = khr::surface::Instance::new(&base.entry, &base.instance);
 
 		let surface_formats = unsafe {
 			surface_loader
-				.get_physical_device_surface_formats(context.physical_device, surface)
+				.get_physical_device_surface_formats(base.physical_device, surface)
 				.unwrap()
 		};
 		let surface_format = pick_surface_format(&surface_formats);
 
 		let surface_capabilities = unsafe {
 			surface_loader
-				.get_physical_device_surface_capabilities(context.physical_device, surface)
+				.get_physical_device_surface_capabilities(base.physical_device, surface)
 				.unwrap()
 		};
 
 		let present_mode = unsafe {
 			surface_loader
-				.get_physical_device_surface_present_modes(context.physical_device, surface)
+				.get_physical_device_surface_present_modes(base.physical_device, surface)
 				.unwrap()
 				.iter()
 				.find(|&&mode| mode == vk::PresentModeKHR::MAILBOX)
@@ -119,11 +60,7 @@ impl Wsi {
 
 		// Create swapchain.
 
-		let swapchain_extent = vk::Extent2D {
-			width: window.inner_size().width,
-			height: window.inner_size().height,
-		};
-		let swapchain_loader = swapchain::Device::new(&context.instance, &device);
+		let swapchain_loader = swapchain::Device::new(&base.instance, &device);
 		let swapchain = create_swapchain(
 			&swapchain_loader,
 			surface,
@@ -156,7 +93,6 @@ impl Wsi {
 		}
 
 		Self {
-			context,
 			surface,
 			device,
 			surface_loader,
@@ -196,14 +132,11 @@ impl Wsi {
 	}
 
 	pub fn end_frame(&mut self) {}
-}
 
-impl Drop for Wsi {
-	fn drop(&mut self) {
+	pub fn destruct(&mut self) {
 		unsafe {
 			self.swapchain_loader.destroy_swapchain(self.swapchain, None);
 			self.surface_loader.destroy_surface(self.surface, None);
-			self.device.destroy_device(None);
 		}
 	}
 }
