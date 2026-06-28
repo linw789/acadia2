@@ -1,9 +1,10 @@
-use crate::vulkan::{base::Base, wsi::Wsi};
-use ash::{
-	Device,
-	khr,
-	vk,
+use crate::vulkan::{
+	base::Base,
+	cmdbuf::CmdBuf,
+	frame::Frame,
+	wsi::{MAX_FRAMES_IN_FLIGHT, Wsi},
 };
+use ash::{Device, khr, vk};
 use std::rc::Rc;
 use winit::{
 	raw_window_handle::{HasDisplayHandle, HasWindowHandle},
@@ -14,6 +15,8 @@ pub struct Renderer {
 	base: Base,
 	device: Rc<Device>,
 	wsi: Wsi,
+	frames: [Frame; MAX_FRAMES_IN_FLIGHT],
+	frame_count: u64,
 }
 
 impl Renderer {
@@ -49,7 +52,7 @@ impl Renderer {
 
 			let priorities = [1.0];
 			let queue_info = vk::DeviceQueueCreateInfo::default()
-				.queue_family_index(base.graphics_family_queue_index)
+				.queue_family_index(base.graphics_queue_family_index)
 				.queue_priorities(&priorities);
 			let device_createinfo = vk::DeviceCreateInfo::default()
 				.queue_create_infos(std::slice::from_ref(&queue_info))
@@ -73,17 +76,37 @@ impl Renderer {
 			Wsi::new(surface, swapchain_extent, &base, Rc::clone(&device))
 		};
 
-		Self { base, device, wsi }
+		let frames = std::array::from_fn(|_| Frame::new(Rc::clone(&device), base.graphics_queue_family_index));
+
+		Self {
+			base,
+			device,
+			wsi,
+			frames,
+			frame_count: 0,
+		}
 	}
 
 	pub fn destruct(&mut self) {
 		unsafe {
+			for frame in self.frames.iter_mut() {
+				frame.destruct();
+			}
 			self.device.destroy_device(None);
 			self.wsi.destruct();
 			self.base.destruct();
 		}
 	}
 
-	pub fn begin_frame(&mut self) {}
-	pub fn end_frame(&mut self) {}
+	pub fn begin_frame(&mut self) -> CmdBuf {
+		let in_flight_frame_index = (self.frame_count % (MAX_FRAMES_IN_FLIGHT as u64)) as usize;
+		self.wsi.begin_frame(in_flight_frame_index);
+
+		let frame = self.frames[in_flight_frame_index];
+		frame.cmd_buf()
+	}
+
+	pub fn end_frame(&mut self) {
+		self.frame_count += 1;
+	}
 }

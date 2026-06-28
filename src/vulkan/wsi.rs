@@ -109,8 +109,7 @@ impl Wsi {
 		}
 	}
 
-	pub fn begin_frame(&mut self) {
-		let in_flight_frame_index = (self.frame_count % (MAX_FRAMES_IN_FLIGHT as u64)) as usize;
+	pub fn begin_frame(&mut self, in_flight_frame_index: usize) {
 		let present_image_ready_semaphore = self.present_image_ready_semaphores[in_flight_frame_index];
 		let frame_fence = self.frame_fences[in_flight_frame_index];
 
@@ -120,15 +119,20 @@ impl Wsi {
 		}
 
 		let present_image_index = unsafe {
-			self.swapchain_loader
+			let result = self.swapchain_loader
 				.acquire_next_image(
 					self.swapchain,
 					u64::MAX,
 					present_image_ready_semaphore,
 					vk::Fence::null(),
 				)
-				.unwrap()
+				.unwrap();
+			
+			// TODO: check result.1 to see if swapchain is suboptimal.
+			result.0 as usize
 		};
+
+		let present_image = self.present_images[present_image_index];
 	}
 
 	pub fn end_frame(&mut self) {}

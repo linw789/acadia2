@@ -1,8 +1,11 @@
-use ash::{Device, vk::{self, PhysicalDeviceMemoryProperties}};
-use crate::vulkan::{buffer::{Buffer}, shader::Program};
+use crate::vulkan::{buffer::Buffer, shader::Program};
+use ash::{
+	Device,
+	vk::{self, PhysicalDeviceMemoryProperties},
+};
 use std::rc::Rc;
 
-struct CmdBuf {
+pub struct CmdBuf {
 	device: Rc<Device>,
 	program: Rc<Program>,
 	pipeline: vk::Pipeline,
@@ -12,25 +15,37 @@ struct CmdBuf {
 }
 
 impl CmdBuf {
-	pub fn new(device: &Rc<Device>, program: Rc<Program>, phy_mem_props: &PhysicalDeviceMemoryProperties) -> Self {
+	pub fn new(device: Rc<Device>, program: Rc<Program>, phy_mem_props: &PhysicalDeviceMemoryProperties) -> Self {
 		Self {
-			device: Rc::clone(&device),
+			device: device,
 			program,
 			pipeline: vk::Pipeline::null(),
-			vertex_buffer: Buffer::new(Rc::clone(&device), 4096, vk::BufferUsageFlags::VERTEX_BUFFER, phy_mem_props),
-			index_buffer: Buffer::new(Rc::clone(&device), 4096, vk::BufferUsageFlags::INDEX_BUFFER, phy_mem_props),
-			uniform_buffer: Buffer::new(Rc::clone(&device), 4096, vk::BufferUsageFlags::UNIFORM_BUFFER, phy_mem_props),
+			vertex_buffer: Buffer::new(
+				Rc::clone(&device),
+				4096,
+				vk::BufferUsageFlags::VERTEX_BUFFER,
+				phy_mem_props,
+			),
+			index_buffer: Buffer::new(
+				Rc::clone(&device),
+				4096,
+				vk::BufferUsageFlags::INDEX_BUFFER,
+				phy_mem_props,
+			),
+			uniform_buffer: Buffer::new(
+				Rc::clone(&device),
+				4096,
+				vk::BufferUsageFlags::UNIFORM_BUFFER,
+				phy_mem_props,
+			),
 		}
 	}
 
-	pub fn allocate_vertex_data(binding: u32, size: u64, stride: u64, input_rate: vk::VertexInputRate, data: &[u8]) {
-	}
+	pub fn allocate_vertex_data(binding: u32, size: u64, stride: u64, input_rate: vk::VertexInputRate, data: &[u8]) {}
 
-	pub fn begin_rendering() {
-	}
+	pub fn begin_rendering() {}
 
-	pub fn end_rendering() {
-	}
+	pub fn end_rendering() {}
 
 	fn set_program(&mut self, program: Rc<Program>) {
 		// TODO: check if self alreayd has a program.
