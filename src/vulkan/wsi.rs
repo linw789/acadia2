@@ -1,6 +1,5 @@
-use crate::vulkan::base::Base;
+use crate::vulkan::{base::Base, device::Device};
 use ash::{
-	Device,
 	khr::{self, swapchain},
 	vk,
 };
@@ -26,9 +25,9 @@ pub struct Wsi {
 	// Signal when GPU finishes writing to a present image.
 	render_complete_semaphores: Vec<vk::Semaphore>,
 
-	frame_fences: Vec<vk::Fence>,
-
-	frame_count: u64,
+	current_present_image_ready_semaphore: vk::Semaphore,
+	present_image_index: usize,
+	in_flight_frame_index: usize,
 }
 
 impl Wsi {
@@ -60,7 +59,7 @@ impl Wsi {
 
 		// Create swapchain.
 
-		let swapchain_loader = swapchain::Device::new(&base.instance, &device);
+		let swapchain_loader = swapchain::Device::new(&base.instance, &device.api);
 		let swapchain = create_swapchain(
 			&swapchain_loader,
 			surface,
@@ -75,21 +74,13 @@ impl Wsi {
 		let mut present_image_ready_semaphores = Vec::new();
 		for _ in 0..MAX_FRAMES_IN_FLIGHT {
 			let createinfo = vk::SemaphoreCreateInfo::default();
-			unsafe { present_image_ready_semaphores.push(device.create_semaphore(&createinfo, None).unwrap()) };
+			unsafe { present_image_ready_semaphores.push(device.api.create_semaphore(&createinfo, None).unwrap()) };
 		}
 
 		let mut render_complete_semaphores = Vec::new();
 		for _ in 0..present_images.len() {
 			let createinfo = vk::SemaphoreCreateInfo::default();
-			unsafe { render_complete_semaphores.push(device.create_semaphore(&createinfo, None).unwrap()) };
-		}
-
-		let mut frame_fences = Vec::new();
-		for _ in 0..MAX_FRAMES_IN_FLIGHT {
-			let createinfo = vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED);
-			unsafe {
-				frame_fences.push(device.create_fence(&createinfo, None).unwrap());
-			}
+			unsafe { render_complete_semaphores.push(device.api.create_semaphore(&createinfo, None).unwrap()) };
 		}
 
 		Self {
@@ -104,26 +95,42 @@ impl Wsi {
 			present_images,
 			present_image_ready_semaphores,
 			render_complete_semaphores,
-			frame_count: 0,
-			frame_fences,
+			current_present_image_ready_semaphore: vk::Semaphore::null(),
+			present_image_index: 0,
+			in_flight_frame_index: 0,
 		}
 	}
 
-	pub fn begin_frame(&mut self, in_flight_frame_index: usize) {
-		let present_image_ready_semaphore = self.present_image_ready_semaphores[in_flight_frame_index];
-		let frame_fence = self.frame_fences[in_flight_frame_index];
-
+	pub fn destruct(&mut self) {
 		unsafe {
-			self.device.wait_for_fences(&[frame_fence], true, u64::MAX).unwrap();
-			self.device.reset_fences(&[frame_fence]).unwrap();
+			self.swapchain_loader.destroy_swapchain(self.swapchain, None);
+			self.surface_loader.destroy_surface(self.surface, None);
 		}
+	}
 
-		let present_image_index = unsafe {
+	pub fn present_image(&self) -> vk::Image {
+		self.present_images[self.present_image_index]
+	}
+
+	pub fn present_image_ready_semaphore(&self) -> vk::Semaphore {
+		self.current_present_image_ready_semaphore
+	}
+
+	pub fn render_complete_semaphore(&self) -> vk::Semaphore {
+		self.render_complete_semaphores[self.present_image_index]
+	}
+
+	pub fn begin_frame(&mut self, in_flight_frame_index: usize) {
+		self.in_flight_frame_index = in_flight_frame_index;
+
+		self.current_present_image_ready_semaphore = self.present_image_ready_semaphores[in_flight_frame_index];
+
+		self.present_image_index = unsafe {
 			let result = self.swapchain_loader
 				.acquire_next_image(
 					self.swapchain,
 					u64::MAX,
-					present_image_ready_semaphore,
+					self.current_present_image_ready_semaphore,
 					vk::Fence::null(),
 				)
 				.unwrap();
@@ -131,17 +138,16 @@ impl Wsi {
 			// TODO: check result.1 to see if swapchain is suboptimal.
 			result.0 as usize
 		};
-
-		let present_image = self.present_images[present_image_index];
 	}
 
-	pub fn end_frame(&mut self) {}
-
-	pub fn destruct(&mut self) {
-		unsafe {
-			self.swapchain_loader.destroy_swapchain(self.swapchain, None);
-			self.surface_loader.destroy_surface(self.surface, None);
-		}
+	pub fn end_frame(&self) {
+		let render_complete_semaphore = self.render_complete_semaphores[self.present_image_index];
+		let present_image_index = self.present_image_index as u32;
+		let present_info = vk::PresentInfoKHR::default()
+			.wait_semaphores(std::slice::from_ref(&render_complete_semaphore))
+			.swapchains(std::slice::from_ref(&self.swapchain))
+			.image_indices(std::slice::from_ref(&present_image_index));
+		unsafe { self.swapchain_loader.queue_present(self.device.present_queue, &present_info).unwrap(); }
 	}
 }
 

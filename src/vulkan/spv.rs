@@ -350,22 +350,22 @@ pub fn parse_code(spv_code: &[u32]) -> Parsed {
 	}
 }
 
-pub fn parse_file<P: AsRef<Path>>(spv_file_path: P) -> Result<Parsed> {
+pub fn read_file<P: AsRef<Path>>(spv_file_path: P) -> Result<Vec<u32>> {
 	let mut spv_file = File::open(&spv_file_path)?;
-	let file_byte_size = spv_file.metadata()?.len();
+	let file_size = spv_file.metadata()?.len();
 
-	if file_byte_size % 4 != 0 {
+	if file_size % 4 != 0 {
 		return Err(Error::new(
 			ErrorKind::InvalidData,
 			"Spv file size isn't multple of 4.",
 		));
 	}
-	if file_byte_size > (isize::MAX as u64) {
+	if file_size > (isize::MAX as u64) {
 		return Err(Error::new(ErrorKind::InvalidData, "Spv file size too big."));
 	}
 
 	const WORD_SIZE: usize = 4;
-	let file_word_size = (file_byte_size as usize) / WORD_SIZE;
+	let file_word_size = (file_size as usize) / WORD_SIZE;
 	let mut spv_words = vec![0u32; file_word_size];
 
 	spv_file.read_exact(unsafe {
@@ -404,7 +404,7 @@ pub fn parse_file<P: AsRef<Path>>(spv_file_path: P) -> Result<Parsed> {
 		));
 	}
 
-	Ok(parse_code(&spv_words))
+	Ok(spv_words)
 }
 
 fn shader_stage_from_execution_model(model: ExecutionModel) -> Option<vk::ShaderStageFlags> {

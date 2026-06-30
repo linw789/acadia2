@@ -1,8 +1,5 @@
-use crate::vulkan::util::find_memory_type_index;
-use ::ash::{
-	Device,
-	vk::{self, MemoryPropertyFlags, PhysicalDeviceMemoryProperties},
-};
+use crate::vulkan::device::Device;
+use ::ash::vk::{self, MemoryPropertyFlags, PhysicalDeviceMemoryProperties};
 use ::bytemuck;
 use std::{
 	cell::{RefCell, RefMut},
@@ -68,18 +65,16 @@ impl Buffer {
 		device: Rc<Device>,
 		size: u64,
 		usage: vk::BufferUsageFlags,
-		memory_prop: &PhysicalDeviceMemoryProperties,
 	) -> Self {
 		let buffer_createinfo = vk::BufferCreateInfo::default()
 			.size(size)
 			.usage(usage)
 			.sharing_mode(vk::SharingMode::EXCLUSIVE);
-		let buf = unsafe { device.create_buffer(&buffer_createinfo, None).unwrap() };
+		let buf = unsafe { device.api.create_buffer(&buffer_createinfo, None).unwrap() };
 
-		let buf_mem_req = unsafe { device.get_buffer_memory_requirements(buf) };
-		let mem_type_index = find_memory_type_index(
-			&memory_prop,
-			&buf_mem_req,
+		let buf_mem_req = unsafe { device.api.get_buffer_memory_requirements(buf) };
+		let mem_type_index = device.find_memory_type_index(
+			buf_mem_req,
 			MemoryPropertyFlags::HOST_VISIBLE | MemoryPropertyFlags::HOST_COHERENT,
 		)
 		.expect("Failed to find suitable memory type.");
@@ -88,16 +83,14 @@ impl Buffer {
 		let mem_alloc_info = vk::MemoryAllocateInfo::default()
 			.allocation_size(required_size)
 			.memory_type_index(mem_type_index);
-		let mem = unsafe { device.allocate_memory(&mem_alloc_info, None).unwrap() };
+		let mem = unsafe { device.api.allocate_memory(&mem_alloc_info, None).unwrap() };
 
 		unsafe {
-			device.bind_buffer_memory(buf, mem, 0).unwrap();
+			device.api.bind_buffer_memory(buf, mem, 0).unwrap();
 		}
 
 		let ptr = unsafe {
-			device
-				.map_memory(mem, 0, size, vk::MemoryMapFlags::empty())
-				.unwrap()
+			device.api.map_memory(mem, 0, size, vk::MemoryMapFlags::empty()).unwrap()
 			// No need to unmap memory after copy (persistent mapping).
 		};
 
@@ -120,8 +113,8 @@ impl Buffer {
 impl Drop for Buffer {
 	fn drop(&mut self) {
 		unsafe {
-			self.device.free_memory(self.mem, None);
-			self.device.destroy_buffer(self.buf, None);
+			self.device.api.free_memory(self.mem, None);
+			self.device.api.destroy_buffer(self.buf, None);
 		}
 	}
 }
@@ -137,4 +130,3 @@ impl<'a> BufferWriter<'a> {
 		self.offset += (size_of::<T>() * slice.len()) as u64;
 	}
 }
-

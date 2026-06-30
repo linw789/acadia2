@@ -42,6 +42,15 @@ impl Triangle {
 			vec4(1.0, 0.0, 0.0, 1.0),
 		];
 
+		let renderer = self.renderer.as_mut().unwrap();
+		let cmd_buf = renderer.begin_frame();
+
+		cmd_buf.begin_rendering();
+		cmd_buf.set_program();
+		cmd_buf.end_rendering();
+
+		renderer.end_frame(cmd_buf);
+
 		/*
 		cmd.begin_rendering();
 		cmd.set_program();

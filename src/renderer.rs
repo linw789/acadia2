@@ -1,10 +1,12 @@
 use crate::vulkan::{
 	base::Base,
 	cmdbuf::CmdBuf,
+	device::Device,
 	frame::Frame,
 	wsi::{MAX_FRAMES_IN_FLIGHT, Wsi},
+	shader::ShaderManager,
 };
-use ash::{Device, khr, vk};
+use ash::{khr, vk};
 use std::rc::Rc;
 use winit::{
 	raw_window_handle::{HasDisplayHandle, HasWindowHandle},
@@ -16,7 +18,9 @@ pub struct Renderer {
 	device: Rc<Device>,
 	wsi: Wsi,
 	frames: [Frame; MAX_FRAMES_IN_FLIGHT],
+	frame_fences: [vk::Fence; MAX_FRAMES_IN_FLIGHT],
 	frame_count: u64,
+	shader_manager: ShaderManager,
 }
 
 impl Renderer {
@@ -59,13 +63,16 @@ impl Renderer {
 				.enabled_extension_names(&device_extension_names_raw)
 				.enabled_features(&features)
 				.push_next(&mut vk13_features);
-			unsafe {
-				Rc::new(
-					base.instance
-						.create_device(base.physical_device, &device_createinfo, None)
-						.unwrap(),
-				)
-			}
+			let device_api = unsafe {
+				base.instance
+					.create_device(base.physical_device, &device_createinfo, None)
+					.unwrap()
+			};
+			Rc::new(Device::new(
+				device_api,
+				base.graphics_queue_family_index,
+				base.physical_device_mem_props,
+			))
 		};
 
 		let wsi = {
@@ -78,35 +85,76 @@ impl Renderer {
 
 		let frames = std::array::from_fn(|_| Frame::new(Rc::clone(&device), base.graphics_queue_family_index));
 
+		let frame_fences = std::array::from_fn(|_| {
+			let createinfo = vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED);
+			unsafe { device.api.create_fence(&createinfo, None).unwrap() }
+		});
+
+		let shader_manager = ShaderManager::new(Rc::clone(&device));
+		shader_manager.add_program(
+
 		Self {
 			base,
 			device,
 			wsi,
 			frames,
+			frame_fences,
 			frame_count: 0,
+			shader_manager,
 		}
 	}
 
 	pub fn destruct(&mut self) {
-		unsafe {
-			for frame in self.frames.iter_mut() {
-				frame.destruct();
+		for fence in self.frame_fences.iter() {
+			unsafe {
+				self.device.api.destroy_fence(*fence, None);
 			}
-			self.device.destroy_device(None);
-			self.wsi.destruct();
-			self.base.destruct();
 		}
+		for frame in self.frames.iter_mut() {
+			frame.destruct();
+		}
+		Rc::get_mut(&mut self.device).unwrap().destruct();
+		self.wsi.destruct();
+		self.base.destruct();
 	}
 
-	pub fn begin_frame(&mut self) -> CmdBuf {
-		let in_flight_frame_index = (self.frame_count % (MAX_FRAMES_IN_FLIGHT as u64)) as usize;
+	pub fn begin_frame(&mut self) -> Rc<CmdBuf> {
+		let in_flight_frame_index = (self.frame_count as usize) % MAX_FRAMES_IN_FLIGHT;
 		self.wsi.begin_frame(in_flight_frame_index);
 
-		let frame = self.frames[in_flight_frame_index];
-		frame.cmd_buf()
+		let frame_fence = self.frame_fences[in_flight_frame_index];
+
+		unsafe {
+			self.device.api.wait_for_fences(&[frame_fence], true, u64::MAX).unwrap();
+			self.device.api.reset_fences(&[frame_fence]).unwrap();
+		}
+
+		let mut cmd_buf = self.frames[in_flight_frame_index].cmd_buf();
+		Rc::get_mut(&mut cmd_buf)
+			.unwrap()
+			.set_present_image(self.wsi.present_image());
+		cmd_buf
 	}
 
-	pub fn end_frame(&mut self) {
+	pub fn end_frame(&mut self, cmd_buf: Rc<CmdBuf>) {
+		{
+			let frame_fence = self.frame_fences[(self.frame_count as usize) % MAX_FRAMES_IN_FLIGHT];
+			let present_image_ready_semaphore = self.wsi.present_image_ready_semaphore();
+			let render_complete_semaphore = self.wsi.render_complete_semaphore();
+			let submit_info = vk::SubmitInfo::default()
+				.wait_semaphores(std::slice::from_ref(&present_image_ready_semaphore))
+				.wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
+				.command_buffers(std::slice::from_ref(&cmd_buf.as_ref().cmd_buf))
+				.signal_semaphores(std::slice::from_ref(&render_complete_semaphore));
+			unsafe {
+				self.device
+					.api
+					.queue_submit(self.device.present_queue, &[submit_info], frame_fence)
+					.unwrap();
+			}
+		}
+
+		self.wsi.end_frame();
 		self.frame_count += 1;
 	}
 }

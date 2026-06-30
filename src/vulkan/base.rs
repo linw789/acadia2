@@ -174,7 +174,7 @@ impl Base {
 		self.physical_device = physical_device;
 		self.physical_device_mem_props = physical_device_mem_props;
 		self.physical_device_features = features;
-		self.graphics_family_queue_index = graphics_queue_family_index;
+		self.graphics_queue_family_index = graphics_queue_family_index;
 	}
 
 	pub fn destruct(&mut self) {

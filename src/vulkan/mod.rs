@@ -8,3 +8,4 @@ pub mod shader;
 pub mod spv;
 pub mod util;
 pub mod wsi;
+pub mod image;
