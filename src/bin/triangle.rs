@@ -7,6 +7,7 @@ use ::winit::{
 	event_loop::{ControlFlow, EventLoop, ActiveEventLoop},
 	window::{Window, WindowId},
 };
+use std::rc::Rc;
 
 struct Triangle {
 	window: Option<Window>,
@@ -43,25 +44,22 @@ impl Triangle {
 		];
 
 		let renderer = self.renderer.as_mut().unwrap();
-		let cmd_buf = renderer.begin_frame();
 
-		cmd_buf.begin_rendering();
-		cmd_buf.set_program();
-		cmd_buf.end_rendering();
+		let mut cmd_buf = renderer.begin_frame();
+		{
+			let program = renderer
+				.shader_manager
+				.find_program(&["assets/shaders/triangle.vert.spv", "assets/shaders/triangle.frag.spv"])
+				.unwrap();
 
-		renderer.end_frame(cmd_buf);
+			let cmd_buf = Rc::get_mut(&mut cmd_buf).unwrap();
 
-		/*
-		cmd.begin_rendering();
-		cmd.set_program();
-		cmd.alloc_vertex_data();
-		cmd.alloc_vertex_data();
-		cmd.set_vertex_attribute();
-		cmd.set_vertex_attribute();
-		cmd.draw();
-		cmd.end_rendering();
-		device.submit(cmd);
-		*/
+			cmd_buf.begin_rendering();
+			cmd_buf.set_program(program);
+			cmd_buf.end_rendering();
+		}
+
+		renderer.end_frame(cmd_buf.as_ref());
 	}
 }
 
@@ -77,6 +75,7 @@ impl ApplicationHandler for Triangle {
 								)
 								.unwrap(),
 				);
+				self.init_renderer();
 			}
     }
 

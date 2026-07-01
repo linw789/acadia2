@@ -1,6 +1,6 @@
 use crate::vulkan::{device::Device, spv};
-use ash::{vk};
-use std::{path::Path, rc::Rc};
+use ash::vk;
+use std::{path::Path, rc::Rc, collections::hash_map::{DefaultHasher, HashMap}, hash::{Hash, Hasher}};
 
 const MAX_SET_LAYOUT_COUNT: usize = 6;
 
@@ -24,7 +24,7 @@ pub struct Program {
 pub struct ShaderManager {
 	device: Rc<Device>,
 	shaders: Vec<Rc<Shader>>,
-	programs: Vec<Rc<Program>>,
+	programs: HashMap<u64, Rc<Program>>,
 }
 
 impl Shader {
@@ -67,7 +67,8 @@ impl Program {
 				if let Some(b) = bindings {
 					let set_layout_createinfo = vk::DescriptorSetLayoutCreateInfo::default().bindings(&b);
 					desc_set_layouts[i] = unsafe {
-						device.api
+						device
+							.api
 							.create_descriptor_set_layout(&set_layout_createinfo, None)
 							.unwrap()
 					};
@@ -79,7 +80,8 @@ impl Program {
 		let pipeline_layout = {
 			let pipeline_layout_createinfo = vk::PipelineLayoutCreateInfo::default().set_layouts(&desc_set_layouts);
 			unsafe {
-				device.api
+				device
+					.api
 					.create_pipeline_layout(&pipeline_layout_createinfo, None)
 					.unwrap()
 			}
@@ -127,16 +129,26 @@ impl ShaderManager {
 		Self {
 			device,
 			shaders: Vec::new(),
-			programs: Vec::new(),
+			programs: HashMap::new(),
 		}
 	}
 
 	pub fn add_graphics_program<P: AsRef<Path>>(&mut self, vert_spv_path: P, frag_spv_path: P) -> Rc<Program> {
-		let vert_shader = self.load_shader_spv(vert_spv_path);
-		let frag_shader = self.load_shader_spv(frag_spv_path);
-		let program = Rc::new(Program::new(Rc::clone(&self.device), vk::PipelineBindPoint::GRAPHICS, vec![vert_shader, frag_shader]));
-		self.programs.push(program);
+		let vert_shader = self.load_shader_spv(&vert_spv_path);
+		let frag_shader = self.load_shader_spv(&frag_spv_path);
+		let program = Rc::new(Program::new(
+			Rc::clone(&self.device),
+			vk::PipelineBindPoint::GRAPHICS,
+			vec![vert_shader, frag_shader],
+		));
+		let hash = hash_paths(&[vert_spv_path, frag_spv_path]);
+		self.programs.insert(hash, Rc::clone(&program));
 		program
+	}
+
+	pub fn find_program<P: AsRef<Path>>(&self, spv_paths: &[P]) -> Option<Rc<Program>> {
+		let hash = hash_paths(spv_paths);
+		self.programs.get(&hash).cloned()
 	}
 
 	fn load_shader_spv<P: AsRef<Path>>(&mut self, spv_path: P) -> Rc<Shader> {
@@ -153,7 +165,16 @@ impl ShaderManager {
 			input_location_mask: parsed.input_location_mask,
 			output_location_mask: parsed.output_location_mask,
 		});
-		self.shaders.push(shader);
+		self.shaders.push(Rc::clone(&shader));
 		shader
 	}
+}
+
+fn hash_paths<P: AsRef<Path>>(paths: &[P]) -> u64 {
+	let mut hasher = DefaultHasher::new();
+	paths.len().hash(&mut hasher);
+	for p in paths {
+		p.as_ref().hash(&mut hasher);
+	}
+	hasher.finish()
 }

@@ -20,7 +20,7 @@ pub struct Renderer {
 	frames: [Frame; MAX_FRAMES_IN_FLIGHT],
 	frame_fences: [vk::Fence; MAX_FRAMES_IN_FLIGHT],
 	frame_count: u64,
-	shader_manager: ShaderManager,
+	pub shader_manager: ShaderManager,
 }
 
 impl Renderer {
@@ -90,8 +90,8 @@ impl Renderer {
 			unsafe { device.api.create_fence(&createinfo, None).unwrap() }
 		});
 
-		let shader_manager = ShaderManager::new(Rc::clone(&device));
-		shader_manager.add_program(
+		let mut shader_manager = ShaderManager::new(Rc::clone(&device));
+		shader_manager.add_graphics_program("assets/shaders/triangle.vert.spv", "assets/shaders/triangle.frag.spv");
 
 		Self {
 			base,
@@ -136,7 +136,7 @@ impl Renderer {
 		cmd_buf
 	}
 
-	pub fn end_frame(&mut self, cmd_buf: Rc<CmdBuf>) {
+	pub fn end_frame(&mut self, cmd_buf: &CmdBuf) {
 		{
 			let frame_fence = self.frame_fences[(self.frame_count as usize) % MAX_FRAMES_IN_FLIGHT];
 			let present_image_ready_semaphore = self.wsi.present_image_ready_semaphore();
@@ -144,7 +144,7 @@ impl Renderer {
 			let submit_info = vk::SubmitInfo::default()
 				.wait_semaphores(std::slice::from_ref(&present_image_ready_semaphore))
 				.wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-				.command_buffers(std::slice::from_ref(&cmd_buf.as_ref().cmd_buf))
+				.command_buffers(std::slice::from_ref(&cmd_buf.cmd_buf))
 				.signal_semaphores(std::slice::from_ref(&render_complete_semaphore));
 			unsafe {
 				self.device

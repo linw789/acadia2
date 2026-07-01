@@ -1,38 +1,46 @@
-use crate::vulkan::shader::Program;
+use crate::vulkan::{device::Device, shader::Program};
 use arrayvec::ArrayVec;
-use ash::{Device, vk};
+use ash::vk;
 use std::rc::Rc;
 
 const MAX_VERTEX_BUFFER_COUNT: usize = 4;
 const MAX_VERTEX_ATTRIBUTE_COUNT: usize = 16;
 const MAX_ATTACHMENT_COUNT: usize = 8;
 
-struct PipelineState {
-	program: Rc<Program>,
-	vertex_attributes: [VertexAttribute; MAX_VERTEX_ATTRIBUTE_COUNT],
-	vertex_bindings: [VertexBinding; MAX_VERTEX_BUFFER_COUNT],
+#[derive(Default)]
+pub struct PipelineBuilder {
+	pub program: Option<Rc<Program>>,
+	pub vertex_attributes: [VertexAttribute; MAX_VERTEX_ATTRIBUTE_COUNT],
+	pub vertex_bindings: [VertexBinding; MAX_VERTEX_BUFFER_COUNT],
+	pub state: PipelineState,
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct VertexAttribute {
 	binding: u32,
 	offset: u32,
 	format: vk::Format,
 }
 
+#[derive(Clone, Copy, Default)]
 struct VertexBinding {
 	stride: u32,
 	input_rate: vk::VertexInputRate,
 }
 
-impl PipelineState {
-	pub fn set_vertex_attributes(
-		&mut self,
-		attrib_index: u32,
-		binding: u32,
-		format: vk::Format,
-		offset: u32,
-	) {
+struct PipelineState {
+	primitive_topology: vk::PrimitiveTopology,
+	depth_test: bool,
+	depth_write: bool,
+	depth_compare_op: vk::CompareOp,
+	depth_format: vk::Format,
+	dynamic_depth_bias_enable: bool,
+	line_width: f32,
+	color_formats: Vec<vk::Format>,
+}
+
+impl PipelineBuilder {
+	pub fn set_vertex_attributes(&mut self, attrib_index: u32, binding: u32, format: vk::Format, offset: u32) {
 		self.vertex_attributes[attrib_index as usize] = VertexAttribute {
 			binding,
 			offset,
@@ -40,21 +48,18 @@ impl PipelineState {
 		}
 	}
 
-	pub fn set_vertex_binding(
-		&mut self,
-		binding_index: u32,
-		stride: u32,
-		input_rate: vk::VertexInputRate,
-	) {
+	pub fn set_vertex_binding(&mut self, binding_index: u32, stride: u32, input_rate: vk::VertexInputRate) {
 		self.vertex_bindings[binding_index as usize] = VertexBinding { stride, input_rate };
 	}
 
 	pub fn build_graphics_pipeline(&self, device: Rc<Device>) -> vk::Pipeline {
+		let program = self.program.as_ref().unwrap();
+
 		// stages
 		let shader_entry_name = c"name";
 		const MAX_SHADER_STAGE_COUNT: usize = 8;
 		let mut stages = ArrayVec::<_, MAX_SHADER_STAGE_COUNT>::new();
-		for shader in &self.program.shaders {
+		for shader in &program.shaders {
 			stages.push(
 				vk::PipelineShaderStageCreateInfo::default()
 					.module(shader.module)
@@ -77,8 +82,10 @@ impl PipelineState {
 		let mut dynamic_states = ArrayVec::<_, MAX_DYNAMIC_STATE_COUNT>::new();
 		dynamic_states.push(vk::DynamicState::VIEWPORT);
 		dynamic_states.push(vk::DynamicState::SCISSOR);
-		let dynamic_states_createinfo = vk::PipelineDynamicStateCreateInfo::default()
-			.dynamic_states(&dynamic_states);
+		if self.state.dynamic_depth_bias_enable {
+			dynamic_states.push(vk::DynamicState::DEPTH_BIAS);
+		}
+		let dynamic_states_createinfo = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
 
 		// rasterization state
 		let line_width = 0.8;
@@ -87,25 +94,23 @@ impl PipelineState {
 			.cull_mode(vk::CullModeFlags::BACK)
 			.line_width(line_width)
 			.polygon_mode(vk::PolygonMode::FILL)
-			.depth_bias_enable(true);
+			.depth_bias_enable(self.state.dynamic_depth_bias_enable);
 
 		// multisample state
-		let multisample_state = vk::PipelineMultisampleStateCreateInfo::default()
-			.rasterization_samples(vk::SampleCountFlags::TYPE_1);
+		let multisample_state =
+			vk::PipelineMultisampleStateCreateInfo::default().rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
 		// depth and stencil state
 		let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::default()
-			.depth_test_enable(true)
-			.depth_write_enable(true)
-			.depth_compare_op(vk::CompareOp::GREATER);
+			.depth_test_enable(self.state.depth_test)
+			.depth_write_enable(self.state.depth_write)
+			.depth_compare_op(self.state.depth_compare_op);
 
 		// vertex input
-		let mut vertex_attri_descs =
-			[vk::VertexInputAttributeDescription::default(); MAX_VERTEX_ATTRIBUTE_COUNT];
-		let mut vertex_binding_descs =
-			[vk::VertexInputBindingDescription::default(); MAX_VERTEX_BUFFER_COUNT];
+		let mut vertex_attri_descs = [vk::VertexInputAttributeDescription::default(); MAX_VERTEX_ATTRIBUTE_COUNT];
+		let mut vertex_binding_descs = [vk::VertexInputBindingDescription::default(); MAX_VERTEX_BUFFER_COUNT];
 		let mut vertex_input_state = vk::PipelineVertexInputStateCreateInfo::default();
-		if let Some(vert_shader) = self.program.get_vertex_shader() {
+		if let Some(vert_shader) = program.get_vertex_shader() {
 			let input_location_mask = vert_shader.input_location_mask;
 
 			let mut vertex_binding_mask = 0;
@@ -140,25 +145,22 @@ impl PipelineState {
 		}
 
 		// blend state
-		let mut color_attachment_states =
-			[vk::PipelineColorBlendAttachmentState::default(); MAX_ATTACHMENT_COUNT];
-		let mut color_blend_state = vk::PipelineColorBlendStateCreateInfo::default();
-		if let Some(frag_shader) = self.program.get_fragment_shader() {
+		let mut color_attachment_states = [vk::PipelineColorBlendAttachmentState::default(); MAX_ATTACHMENT_COUNT];
+		let color_blend_state = vk::PipelineColorBlendStateCreateInfo::default();
+		if let Some(frag_shader) = program.get_fragment_shader() {
 			let output_location_mask = frag_shader.output_location_mask;
 			for attachment_index in 0..MAX_ATTACHMENT_COUNT {
 				if output_location_mask & (1 << attachment_index) != 0 {
-					color_attachment_states[attachment_index] =
-						vk::PipelineColorBlendAttachmentState::default()
-							.blend_enable(false)
-							.color_write_mask(vk::ColorComponentFlags::RGBA);
+					color_attachment_states[attachment_index] = vk::PipelineColorBlendAttachmentState::default()
+						.blend_enable(false)
+						.color_write_mask(vk::ColorComponentFlags::RGBA);
 				}
 			}
 		}
 
 		let mut rendering_createinfo = vk::PipelineRenderingCreateInfo::default()
-			// TODO: dynamically set these formats
-			.color_attachment_formats(&[vk::Format::R8G8B8A8_UNORM])
-			.depth_attachment_format(vk::Format::D32_SFLOAT);
+			.color_attachment_formats(&self.state.color_formats)
+			.depth_attachment_format(self.state.depth_format);
 
 		let pipeline_createinfo = vk::GraphicsPipelineCreateInfo::default()
 			.stages(&stages)
@@ -169,13 +171,31 @@ impl PipelineState {
 			.depth_stencil_state(&depth_stencil_state)
 			.vertex_input_state(&vertex_input_state)
 			.color_blend_state(&color_blend_state)
-			.layout(self.program.pipeline_layout)
+			.layout(program.pipeline_layout)
 			.push_next(&mut rendering_createinfo);
 
 		let pipelines = unsafe {
-			device.create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_createinfo], None).unwrap()
+			device
+				.api
+				.create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_createinfo], None)
+				.unwrap()
 		};
 
 		pipelines[0]
+	}
+}
+
+impl Default for PipelineState {
+	fn default() -> Self {
+		Self {
+			primitive_topology: vk::PrimitiveTopology::TRIANGLE_LIST,
+			depth_test: true,
+			depth_write: true,
+			depth_compare_op: vk::CompareOp::GREATER,
+			depth_format: vk::Format::D32_SFLOAT,
+			dynamic_depth_bias_enable: true,
+			line_width: 0.5,
+			color_formats: Vec::new(),
+		}
 	}
 }
