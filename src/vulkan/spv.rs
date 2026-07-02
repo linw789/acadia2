@@ -68,7 +68,7 @@ struct VariableInfo {
 	binding: u32,
 }
 
-// Currenty only support descriptor set and binding decorations.
+// Currently only support descriptor set and binding decorations.
 struct DecorationInfo {
 	target_id: u32,
 	decoration: Decoration,

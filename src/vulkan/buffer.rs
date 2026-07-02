@@ -29,21 +29,6 @@ pub struct BufferWriter<'a> {
 }
 
 impl Pointer {
-	fn copy_value<T: bytemuck::Pod>(&mut self, offset: u64, data: &T) {
-		assert!(
-			self.size >= (offset + (size_of::<T>() as u64)),
-			"buffer size: {}, offset: {}, data size: {}",
-			self.size,
-			offset,
-			size_of::<T>()
-		);
-		let src_bytes: &[u8] = bytemuck::bytes_of(data);
-		unsafe {
-			let dst_ptr = (self.ptr as *mut u8).add(offset as usize);
-			copy_nonoverlapping(src_bytes.as_ptr(), dst_ptr, src_bytes.len());
-		}
-	}
-
 	fn copy_slice<T: bytemuck::Pod>(&mut self, offset: u64, slice: &[T]) {
 		let src_bytes: &[u8] = bytemuck::cast_slice(slice);
 		assert!(
@@ -120,12 +105,7 @@ impl Drop for Buffer {
 }
 
 impl<'a> BufferWriter<'a> {
-	pub fn write_value<T: bytemuck::Pod>(&mut self, val: &T) {
-		self.ptr.copy_value(self.offset, val);
-		self.offset += size_of::<T>() as u64;
-	}
-
-	pub fn write_slice<T: bytemuck::Pod>(&mut self, slice: &[T]) {
+	pub fn write<T: bytemuck::Pod>(&mut self, slice: &[T]) {
 		self.ptr.copy_slice(self.offset, slice);
 		self.offset += (size_of::<T>() * slice.len()) as u64;
 	}

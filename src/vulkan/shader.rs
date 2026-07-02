@@ -1,8 +1,13 @@
 use crate::vulkan::{device::Device, spv};
 use ash::vk;
-use std::{path::Path, rc::Rc, collections::hash_map::{DefaultHasher, HashMap}, hash::{Hash, Hasher}};
+use std::{
+	collections::hash_map::{DefaultHasher, HashMap},
+	hash::{Hash, Hasher},
+	path::Path,
+	rc::Rc,
+};
 
-const MAX_SET_LAYOUT_COUNT: usize = 6;
+const MAX_SET_LAYOUT_COUNT: usize = 4;
 
 pub struct Shader {
 	device: Rc<Device>,
@@ -19,6 +24,7 @@ pub struct Program {
 	bind_point: vk::PipelineBindPoint,
 	desc_set_layouts: [vk::DescriptorSetLayout; MAX_SET_LAYOUT_COUNT],
 	pub pipeline_layout: vk::PipelineLayout,
+	pub pipeline: vk::Pipeline,
 }
 
 pub struct ShaderManager {
@@ -47,7 +53,18 @@ impl Program {
 					match opt_bindings {
 						Some(bindings) => {
 							if let Some(binding) = bindings.iter_mut().find(|b| b.binding == var.binding) {
+								// If a variable from a different stage is bound at the same set and binding point,
+								// add it to stage_flags.
+								assert!(var.desc_type == binding.descriptor_type);
 								binding.stage_flags |= shader.stage;
+							} else {
+								bindings.push(
+									vk::DescriptorSetLayoutBinding::default()
+										.binding(var.binding)
+										.descriptor_type(var.desc_type)
+										.descriptor_count(1)
+										.stage_flags(shader.stage),
+								);
 							}
 						}
 						None => {
@@ -62,17 +79,23 @@ impl Program {
 					}
 				}
 			}
+
 			let mut desc_set_layouts = [vk::DescriptorSetLayout::null(); MAX_SET_LAYOUT_COUNT];
-			for (i, bindings) in set_bindings.iter().enumerate() {
-				if let Some(b) = bindings {
-					let set_layout_createinfo = vk::DescriptorSetLayoutCreateInfo::default().bindings(&b);
-					desc_set_layouts[i] = unsafe {
-						device
-							.api
-							.create_descriptor_set_layout(&set_layout_createinfo, None)
-							.unwrap()
-					};
-				}
+			for (set_index, bindings) in set_bindings.iter().enumerate() {
+				// Vulkan spec says: If the graphicsPipelineLibrary feature is not enabled, elements of pSetLayouts must be
+				// valid VkDescriptorSetLayout objects. 
+				// So we can leave desc_set_layouts[set_index] as null if graphicsPipelineLibrary is enabled, but to be safe we
+				// just set it to empty layout with no binding.
+
+				let empty_bindings = [];
+				let layout_bindings = if let Some(b) = bindings { b.as_slice() } else { &empty_bindings };
+				let set_layout_createinfo = vk::DescriptorSetLayoutCreateInfo::default().bindings(layout_bindings);
+				desc_set_layouts[set_index] = unsafe {
+					device
+						.api
+						.create_descriptor_set_layout(&set_layout_createinfo, None)
+						.unwrap()
+				};
 			}
 			desc_set_layouts
 		};
@@ -93,6 +116,7 @@ impl Program {
 			bind_point,
 			desc_set_layouts,
 			pipeline_layout,
+			pipeline: vk::Pipeline::null(),
 		}
 	}
 
