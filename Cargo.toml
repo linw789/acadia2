@@ -18,5 +18,5 @@ ash-window = "0.13.0"
 winit = "0.30.12"
 spirv = "0.4.0"
 arrayvec = "0.7.6"
-glam = "0.33.0"
 bytemuck = "1.25.0"
+glam = { version = "0.33.2", features = ["debug-glam-assert"] }
