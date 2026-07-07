@@ -55,6 +55,9 @@ impl Triangle {
 			let cmd_buf = Rc::get_mut(&mut cmd_buf).unwrap();
 
 			cmd_buf.begin_rendering();
+
+			cmd_buf.alloc_vertex_buffer();
+
 			cmd_buf.set_program(program);
 			cmd_buf.end_rendering();
 		}

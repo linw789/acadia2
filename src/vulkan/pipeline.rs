@@ -17,9 +17,9 @@ pub struct PipelineBuilder {
 
 #[derive(Clone, Copy, Default)]
 struct VertexAttribute {
-	binding: u32,
-	offset: u32,
-	format: vk::Format,
+	pub binding: u32,
+	pub offset: u32,
+	pub format: vk::Format,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -40,7 +40,7 @@ struct PipelineState {
 }
 
 impl PipelineBuilder {
-	pub fn set_vertex_attributes(&mut self, attrib_index: u32, binding: u32, format: vk::Format, offset: u32) {
+	pub fn set_vertex_attributes(&mut self, attrib_index: usize, binding: u32, format: vk::Format, offset: u32) {
 		self.vertex_attributes[attrib_index as usize] = VertexAttribute {
 			binding,
 			offset,

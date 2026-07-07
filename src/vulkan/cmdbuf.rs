@@ -4,25 +4,25 @@ use std::{path::Path, rc::Rc};
 
 pub struct CmdBuf {
 	pub cmd_buf: vk::CommandBuffer,
+
 	pipeline_builder: PipelineBuilder,
 	pipeline: vk::Pipeline,
-	vertex_buffer: Buffer,
-	index_buffer: Buffer,
-	uniform_buffer: Buffer,
+
 	present_image: vk::Image,
+
+	vertex_buffer: Option<Buffer>,
+
 	device: Rc<Device>,
 }
 
 impl CmdBuf {
 	pub fn new(device: Rc<Device>, cmd_buf: vk::CommandBuffer) -> Self {
 		Self {
+			cmd_buf,
 			pipeline_builder: PipelineBuilder::default(),
 			pipeline: vk::Pipeline::null(),
-			vertex_buffer: Buffer::new(Rc::clone(&device), 4096, vk::BufferUsageFlags::VERTEX_BUFFER),
-			index_buffer: Buffer::new(Rc::clone(&device), 4096, vk::BufferUsageFlags::INDEX_BUFFER),
-			uniform_buffer: Buffer::new(Rc::clone(&device), 4096, vk::BufferUsageFlags::UNIFORM_BUFFER),
-			cmd_buf,
 			present_image: vk::Image::null(),
+			vertex_buffer: None, // Buffer::new(Rc::clone(&device), 4096, vk::BufferUsageFlags::VERTEX_BUFFER),
 			device,
 		}
 	}
@@ -110,6 +110,11 @@ impl CmdBuf {
 		self.pipeline_builder.program = Some(program);
 	}
 
-	pub fn alloc_vertex_buffer(&mut self, binding: u32, size: u64, stride: u64, input_rate: vk::VertexInputRate) {
+	pub fn alloc_vertex_data(&mut self, binding: u32, size: u64, stride: u64, input_rate: vk::VertexInputRate) {
+		
+	}
+
+	pub fn set_vertex_attrib(&mut self, attrib_index: usize, binding: u32, format: vk::Format, offset: u32) {
+		self.pipeline_builder.set_vertex_attributes(attrib_index, binding, format, offset);
 	}
 }
