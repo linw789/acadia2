@@ -52,7 +52,7 @@ impl PipelineBuilder {
 		self.vertex_bindings[binding_index as usize] = VertexBinding { stride, input_rate };
 	}
 
-	pub fn build_graphics_pipeline(&self, device: Rc<Device>) -> vk::Pipeline {
+	pub fn build_graphics_pipeline(&self, device: &Device) -> vk::Pipeline {
 		let program = self.program.as_ref().unwrap();
 
 		// stages

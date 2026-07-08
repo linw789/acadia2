@@ -1,6 +1,11 @@
-use crate::vulkan::{buffer::Buffer, device::Device, pipeline::PipelineBuilder, shader::Program};
+use crate::vulkan::{
+	buffer::{Buffer, BufferWriter},
+	device::Device,
+	pipeline::PipelineBuilder,
+	shader::Program,
+};
 use ash::vk;
-use std::{path::Path, rc::Rc};
+use std::rc::Rc;
 
 pub struct CmdBuf {
 	pub cmd_buf: vk::CommandBuffer,
@@ -15,7 +20,7 @@ pub struct CmdBuf {
 	device: Rc<Device>,
 }
 
-impl CmdBuf {
+impl<'a> CmdBuf {
 	pub fn new(device: Rc<Device>, cmd_buf: vk::CommandBuffer) -> Self {
 		Self {
 			cmd_buf,
@@ -110,11 +115,34 @@ impl CmdBuf {
 		self.pipeline_builder.program = Some(program);
 	}
 
-	pub fn alloc_vertex_data(&mut self, binding: u32, size: u64, stride: u64, input_rate: vk::VertexInputRate) {
-		
+	pub fn is_vertex_data_allocated(&self) -> bool {
+		self.vertex_buffer.is_some()
+	}
+
+	pub fn alloc_vertex_data(
+		&'a mut self,
+		binding: u32,
+		size: u64,
+		stride: u32,
+		input_rate: vk::VertexInputRate,
+	) -> BufferWriter<'a> {
+		assert!(self.vertex_buffer.is_some());
+
+		self.vertex_buffer = Some(Buffer::new(
+			Rc::clone(&self.device),
+			size,
+			vk::BufferUsageFlags::VERTEX_BUFFER,
+		));
+		self.pipeline_builder.set_vertex_binding(binding, stride, input_rate);
+		self.vertex_buffer.as_ref().unwrap().buffer_writer()
 	}
 
 	pub fn set_vertex_attrib(&mut self, attrib_index: usize, binding: u32, format: vk::Format, offset: u32) {
-		self.pipeline_builder.set_vertex_attributes(attrib_index, binding, format, offset);
+		self.pipeline_builder
+			.set_vertex_attributes(attrib_index, binding, format, offset);
+	}
+
+	fn build_graphics_pipeline(&mut self) {
+		self.pipeline = self.pipeline_builder.build_graphics_pipeline(&self.device);
 	}
 }

@@ -1,10 +1,10 @@
 use ash::{
-	Device, Entry, Instance,
+	Entry, Instance,
 	ext::debug_utils,
-	khr::{surface, swapchain},
+	khr::surface,
 	vk::{self, PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceMemoryProperties},
 };
-use std::{borrow::Cow, ffi::CStr, rc::Rc};
+use std::{borrow::Cow, ffi::CStr};
 use winit::{raw_window_handle::HasDisplayHandle, window::Window};
 
 #[cfg(feature = "vulkan_debug")]
@@ -66,11 +66,10 @@ impl Base {
 			#[cfg(feature = "vulkan_debug")]
 			layer_names.push(c"VK_LAYER_KHRONOS_validation".as_ptr());
 
-			let mut extension_names = ash_window::enumerate_required_extensions(
-				window.display_handle().unwrap().as_raw(),
-			)
-			.unwrap()
-			.to_vec();
+			let mut extension_names =
+				ash_window::enumerate_required_extensions(window.display_handle().unwrap().as_raw())
+					.unwrap()
+					.to_vec();
 			#[cfg(feature = "vulkan_debug")]
 			extension_names.push(debug_utils::NAME.as_ptr());
 
@@ -143,15 +142,10 @@ impl Base {
 						.iter()
 						.enumerate()
 						.find_map(|(index, info)| {
-							let support_graphics_and_surface =
-								info.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-									&& surface_loader
-										.get_physical_device_surface_support(
-											*physical_device,
-											index as u32,
-											surface,
-										)
-										.unwrap();
+							let support_graphics_and_surface = info.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+								&& surface_loader
+									.get_physical_device_surface_support(*physical_device, index as u32, surface)
+									.unwrap();
 							if support_graphics_and_surface {
 								Some((*physical_device, index))
 							} else {
@@ -166,10 +160,7 @@ impl Base {
 
 		let features = unsafe { self.instance.get_physical_device_features(physical_device) };
 
-		let physical_device_mem_props = unsafe {
-			self.instance
-				.get_physical_device_memory_properties(physical_device)
-		};
+		let physical_device_mem_props = unsafe { self.instance.get_physical_device_memory_properties(physical_device) };
 
 		self.physical_device = physical_device;
 		self.physical_device_mem_props = physical_device_mem_props;

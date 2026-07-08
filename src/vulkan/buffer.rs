@@ -1,6 +1,5 @@
 use crate::vulkan::device::Device;
-use ::ash::vk::{self, MemoryPropertyFlags, PhysicalDeviceMemoryProperties};
-use ::bytemuck;
+use ::ash::vk::{self, MemoryPropertyFlags};
 use std::{
 	cell::{RefCell, RefMut},
 	ffi::c_void,
@@ -29,18 +28,17 @@ pub struct BufferWriter<'a> {
 }
 
 impl Pointer {
-	fn copy_slice<T: bytemuck::Pod>(&mut self, offset: u64, slice: &[T]) {
-		let src_bytes: &[u8] = bytemuck::cast_slice(slice);
+	fn copy_bytes(&mut self, offset: u64, bytes: &[u8]) {
 		assert!(
-			self.size >= (offset + src_bytes.len() as u64),
+			self.size >= (offset + bytes.len() as u64),
 			"buffer size: {}, offset: {}, data size: {}",
 			self.size,
 			offset,
-			src_bytes.len()
+			bytes.len()
 		);
 		unsafe {
 			let dst_ptr = (self.ptr as *mut u8).add(offset as usize);
-			copy_nonoverlapping(src_bytes.as_ptr(), dst_ptr, src_bytes.len());
+			copy_nonoverlapping(bytes.as_ptr(), dst_ptr, bytes.len());
 		}
 	}
 }
@@ -87,9 +85,9 @@ impl Buffer {
 		}
 	}
 
-	pub fn buffer_writer(&self, start_offset: u64) -> BufferWriter {
+	pub fn buffer_writer(&self) -> BufferWriter<'_> {
 		BufferWriter {
-			offset: start_offset,
+			offset: 0,
 			ptr: self.ptr.borrow_mut(),
 		}
 	}
@@ -105,8 +103,8 @@ impl Drop for Buffer {
 }
 
 impl<'a> BufferWriter<'a> {
-	pub fn write<T: bytemuck::Pod>(&mut self, slice: &[T]) {
-		self.ptr.copy_slice(self.offset, slice);
-		self.offset += (size_of::<T>() * slice.len()) as u64;
+	pub fn write(&mut self, slice: &[u8]) {
+		self.ptr.copy_bytes(self.offset, slice);
+		self.offset += slice.len() as u64;
 	}
 }
