@@ -10,6 +10,9 @@ use std::rc::Rc;
 pub struct CmdBuf {
 	pub cmd_buf: vk::CommandBuffer,
 
+	viewport: vk::Viewport,
+	scissor: vk::Rect2D,
+
 	pipeline_builder: PipelineBuilder,
 	pipeline: vk::Pipeline,
 
@@ -20,10 +23,16 @@ pub struct CmdBuf {
 	device: Rc<Device>,
 }
 
+pub struct RenderingInfo {
+	render_area: vk::Rect2D,
+}
+
 impl<'a> CmdBuf {
 	pub fn new(device: Rc<Device>, cmd_buf: vk::CommandBuffer) -> Self {
 		Self {
 			cmd_buf,
+			viewport: vk::Viewport::default(),
+			scissor: vk::Rect2D::default(),
 			pipeline_builder: PipelineBuilder::default(),
 			pipeline: vk::Pipeline::null(),
 			present_image: vk::Image::null(),
@@ -38,7 +47,17 @@ impl<'a> CmdBuf {
 		self.present_image = present_image;
 	}
 
-	pub fn begin_rendering(&self) {
+	pub fn begin_rendering(&mut self, info: RenderingInfo) {
+		self.viewport = vk::Viewport {
+			x: info.render_area.offset.x as f32,
+			y: info.render_area.offset.y as f32,
+			width: info.render_area.extent.width as f32,
+			height: info.render_area.extent.height as f32,
+			min_depth: 0.0,
+			max_depth: 1.0,
+		};
+		self.scissor = info.render_area;
+
 		// Re-start command buffer recording.
 		unsafe {
 			self.device
@@ -142,7 +161,24 @@ impl<'a> CmdBuf {
 			.set_vertex_attributes(attrib_index, binding, format, offset);
 	}
 
-	fn build_graphics_pipeline(&mut self) {
-		self.pipeline = self.pipeline_builder.build_graphics_pipeline(&self.device);
+	pub fn draw(&mut self, vertex_count: u32) {
+		if self.pipeline == vk::Pipeline::null() {
+			self.pipeline = self.pipeline_builder.build_graphics_pipeline(&self.device);
+		}
+
+		unsafe {
+			self.device
+				.api
+				.cmd_bind_pipeline(self.cmd_buf, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+
+			self.device.api.cmd_set_viewport(self.cmd_buf, 0, &[self.viewport]);
+			self.device.api.cmd_set_scissor(self.cmd_buf, 0, &[self.scissor]);
+
+			self.device
+				.api
+				.cmd_bind_vertex_buffers(self.cmd_buf, 0, &[self.vertex_buffer.as_ref().unwrap().buf], &[0]);
+
+			self.device.api.cmd_draw(self.cmd_buf, vertex_count, 1, 0, 0);
+		}
 	}
 }

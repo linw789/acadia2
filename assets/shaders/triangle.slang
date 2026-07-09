@@ -1,11 +1,5 @@
-struct PerFrame {
-	float4x4 pvm; // perspective-view-model matrix
-}
-[[vk::binding(0, 0)]]
-ConstantBuffer<PerFrame> per_frame;
-
 struct AssembledVertex {
-	float3 position;
+	float2 position;
 	float4 color;
 }
 
@@ -22,7 +16,7 @@ struct VertexOutput {
 VertexOutput vertex_main(AssembledVertex assembled) {
 	VertexOutput output;
 	output.frag_input.color = assembled.color;
-	output.position = mul(per_frame.pvm, float4(assembled.position, 1.0));
+	output.position = float4(assembled.position, 0.0, 1.0);
 	return output;
 }
 
