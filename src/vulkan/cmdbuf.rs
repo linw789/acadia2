@@ -24,7 +24,7 @@ pub struct CmdBuf {
 }
 
 pub struct RenderingInfo {
-	render_area: vk::Rect2D,
+	pub render_area: vk::Rect2D,
 }
 
 impl<'a> CmdBuf {
@@ -57,6 +57,8 @@ impl<'a> CmdBuf {
 			max_depth: 1.0,
 		};
 		self.scissor = info.render_area;
+
+		
 
 		// Re-start command buffer recording.
 		unsafe {

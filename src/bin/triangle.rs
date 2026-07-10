@@ -5,7 +5,7 @@ use ::winit::{
 	event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
 	window::{Window, WindowId},
 };
-use acadia::renderer::Renderer;
+use acadia::{vulkan::cmdbuf::RenderingInfo, renderer::Renderer};
 use ash::vk;
 use glam::{Vec2, Vec4, vec2, vec4};
 use std::{rc::Rc, slice};
@@ -68,7 +68,13 @@ impl Triangle {
 
 			let cmd_buf = Rc::get_mut(&mut cmd_buf).unwrap();
 
-			cmd_buf.begin_rendering();
+			let rendering_info = RenderingInfo {
+				render_area: vk::Rect2D {
+					offset: vk::Offset2D { x: 0, y: 0, },
+					extent: vk::Extent2D { width: self.window_size.width, height: self.window_size.height, },
+				}
+			};
+			cmd_buf.begin_rendering(rendering_info);
 			cmd_buf.set_program(program);
 
 			if !cmd_buf.is_vertex_data_allocated() {
@@ -109,9 +115,16 @@ impl ApplicationHandler for Triangle {
 
 	fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
 		match event {
+			WindowEvent::CloseRequested => {
+				println!("[DEBUG LINW] close requested.");
+				// self.destruct();
+				event_loop.exit();
+				self.exit_requested = true;
+			}
+
 			WindowEvent::RedrawRequested => {
 				if self.exit_requested == false {
-					// self.update();
+					self.draw_frame();
 					self.window.as_ref().unwrap().request_redraw();
 				}
 			}
