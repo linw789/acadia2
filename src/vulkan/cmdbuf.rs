@@ -58,8 +58,6 @@ impl<'a> CmdBuf {
 		};
 		self.scissor = info.render_area;
 
-		
-
 		// Re-start command buffer recording.
 		unsafe {
 			self.device
@@ -147,7 +145,7 @@ impl<'a> CmdBuf {
 		stride: u32,
 		input_rate: vk::VertexInputRate,
 	) -> BufferWriter<'a> {
-		assert!(self.vertex_buffer.is_some());
+		assert!(self.vertex_buffer.is_none());
 
 		self.vertex_buffer = Some(Buffer::new(
 			Rc::clone(&self.device),

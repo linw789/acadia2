@@ -25,7 +25,7 @@ pub struct Wsi {
 	// Signal when GPU finishes writing to a present image.
 	render_complete_semaphores: Vec<vk::Semaphore>,
 
-	current_present_image_ready_semaphore: vk::Semaphore,
+	present_image_ready_semaphore: vk::Semaphore,
 	present_image_index: usize,
 	in_flight_frame_index: usize,
 }
@@ -95,7 +95,7 @@ impl Wsi {
 			present_images,
 			present_image_ready_semaphores,
 			render_complete_semaphores,
-			current_present_image_ready_semaphore: vk::Semaphore::null(),
+			present_image_ready_semaphore: vk::Semaphore::null(),
 			present_image_index: 0,
 			in_flight_frame_index: 0,
 		}
@@ -113,7 +113,7 @@ impl Wsi {
 	}
 
 	pub fn present_image_ready_semaphore(&self) -> vk::Semaphore {
-		self.current_present_image_ready_semaphore
+		self.present_image_ready_semaphore
 	}
 
 	pub fn render_complete_semaphore(&self) -> vk::Semaphore {
@@ -123,14 +123,14 @@ impl Wsi {
 	pub fn begin_frame(&mut self, in_flight_frame_index: usize) {
 		self.in_flight_frame_index = in_flight_frame_index;
 
-		self.current_present_image_ready_semaphore = self.present_image_ready_semaphores[in_flight_frame_index];
+		self.present_image_ready_semaphore = self.present_image_ready_semaphores[in_flight_frame_index];
 
 		self.present_image_index = unsafe {
 			let result = self.swapchain_loader
 				.acquire_next_image(
 					self.swapchain,
 					u64::MAX,
-					self.current_present_image_ready_semaphore,
+					self.present_image_ready_semaphore,
 					vk::Fence::null(),
 				)
 				.unwrap();

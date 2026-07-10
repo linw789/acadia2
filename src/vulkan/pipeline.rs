@@ -56,7 +56,7 @@ impl PipelineBuilder {
 		let program = self.program.as_ref().unwrap();
 
 		// stages
-		let shader_entry_name = c"name";
+		let shader_entry_name = c"main";
 		const MAX_SHADER_STAGE_COUNT: usize = 8;
 		let mut stages = ArrayVec::<_, MAX_SHADER_STAGE_COUNT>::new();
 		for shader in &program.shaders {
@@ -68,7 +68,9 @@ impl PipelineBuilder {
 			);
 		}
 
-		// viewport and scissor
+		let input_assembly_state =
+			vk::PipelineInputAssemblyStateCreateInfo::default().topology(self.state.primitive_topology);
+
 		// Because we use dynamic viewport, we can pass a dummy viewport and scissor to create-info to
 		// make Vulkan validation layer happy.
 		let viewports = [vk::Viewport::default()];
@@ -164,6 +166,7 @@ impl PipelineBuilder {
 
 		let pipeline_createinfo = vk::GraphicsPipelineCreateInfo::default()
 			.stages(&stages)
+			.input_assembly_state(&input_assembly_state)
 			.viewport_state(&viewport_state)
 			.dynamic_state(&dynamic_states_createinfo)
 			.rasterization_state(&raster_state)

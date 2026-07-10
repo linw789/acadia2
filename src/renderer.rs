@@ -20,7 +20,7 @@ pub struct Renderer {
 	frames: [Frame; MAX_FRAMES_IN_FLIGHT],
 	frame_fences: [vk::Fence; MAX_FRAMES_IN_FLIGHT],
 	frame_count: u64,
-	pub shader_manager: ShaderManager,
+	shader_manager: ShaderManager,
 }
 
 impl Renderer {
@@ -118,29 +118,38 @@ impl Renderer {
 		self.base.destruct();
 	}
 
-	pub fn begin_frame(&mut self) -> Rc<CmdBuf> {
+	pub fn record_frame(&mut self, f: impl FnOnce(&mut CmdBuf, &mut ShaderManager)) {
+		let in_flight_frame_index = self.begin_frame();
+
+		let cmd_buf = self.frames[in_flight_frame_index].cmd_buf_mut();
+		cmd_buf.set_present_image(self.wsi.present_image());
+
+		f(cmd_buf, &mut self.shader_manager);
+
+		self.end_frame(in_flight_frame_index);
+	}
+
+	fn begin_frame(&mut self) -> usize {
 		let in_flight_frame_index = (self.frame_count as usize) % MAX_FRAMES_IN_FLIGHT;
-		self.wsi.begin_frame(in_flight_frame_index);
 
 		let frame_fence = self.frame_fences[in_flight_frame_index];
-
 		unsafe {
 			self.device.api.wait_for_fences(&[frame_fence], true, u64::MAX).unwrap();
 			self.device.api.reset_fences(&[frame_fence]).unwrap();
 		}
 
-		let mut cmd_buf = self.frames[in_flight_frame_index].cmd_buf();
-		Rc::get_mut(&mut cmd_buf)
-			.unwrap()
-			.set_present_image(self.wsi.present_image());
-		cmd_buf
+		// TODO: Why does 
+		self.wsi.begin_frame(in_flight_frame_index);
+
+		in_flight_frame_index
 	}
 
-	pub fn end_frame(&mut self, cmd_buf: &CmdBuf) {
+	fn end_frame(&mut self, in_flight_frame_index: usize) {
 		{
-			let frame_fence = self.frame_fences[(self.frame_count as usize) % MAX_FRAMES_IN_FLIGHT];
+			let frame_fence = self.frame_fences[in_flight_frame_index];
 			let present_image_ready_semaphore = self.wsi.present_image_ready_semaphore();
 			let render_complete_semaphore = self.wsi.render_complete_semaphore();
+			let cmd_buf = self.frames[in_flight_frame_index].cmd_buf();
 			let submit_info = vk::SubmitInfo::default()
 				.wait_semaphores(std::slice::from_ref(&present_image_ready_semaphore))
 				.wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])

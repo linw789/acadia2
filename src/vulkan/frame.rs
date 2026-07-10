@@ -6,14 +6,14 @@ use crate::vulkan::{cmdbuf::CmdBuf, device::Device};
 pub struct Frame {
 	device: Rc<Device>,
 	cmd_pool: vk::CommandPool,
-	cmd_bufs: Vec<Rc<CmdBuf>>,
+	cmd_bufs: Vec<CmdBuf>,
 }
 
 impl Frame {
 	pub fn new(device: Rc<Device>, graphics_queue_index: u32) -> Self {
 		let cmd_pool = unsafe {
 			let pool_createinfo = vk::CommandPoolCreateInfo::default()
-				.flags(vk::CommandPoolCreateFlags::TRANSIENT)
+				.flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
 				.queue_family_index(graphics_queue_index);
 			device.api.create_command_pool(&pool_createinfo, None).unwrap()
 		};
@@ -24,7 +24,7 @@ impl Frame {
 				.level(vk::CommandBufferLevel::PRIMARY)
 				.command_buffer_count(1);
 			let cbs = device.api.allocate_command_buffers(&allocinfo).unwrap();
-			cbs.into_iter().map(|cb| Rc::new(CmdBuf::new(Rc::clone(&device), cb))).collect()
+			cbs.into_iter().map(|cb| CmdBuf::new(Rc::clone(&device), cb)).collect()
 		};
 
 		Self {
@@ -34,8 +34,12 @@ impl Frame {
 		}
 	}
 
-	pub fn cmd_buf(&self) -> Rc<CmdBuf> {
-		Rc::clone(&self.cmd_bufs[0])
+	pub fn cmd_buf(&self) -> &CmdBuf {
+		&self.cmd_bufs[0]
+	}
+
+	pub fn cmd_buf_mut(&mut self) -> &mut CmdBuf {
+		&mut self.cmd_bufs[0]
 	}
 
 	pub fn destruct(&mut self) {

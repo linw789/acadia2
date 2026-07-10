@@ -10,6 +10,17 @@ use ash::vk;
 use glam::{Vec2, Vec4, vec2, vec4};
 use std::{rc::Rc, slice};
 
+#[macro_export]
+macro_rules! offset_of {
+    ($base:path, $field:ident) => {{
+        #[allow(unused_unsafe)]
+        unsafe {
+            let b: $base = std::mem::zeroed();
+            std::ptr::addr_of!(b.$field) as isize - std::ptr::addr_of!(b) as isize
+        }
+    }};
+}
+
 #[repr(C, packed)]
 struct Vertex {
 	position: Vec2,
@@ -44,29 +55,24 @@ impl Triangle {
 	fn draw_frame(&mut self) {
 		let vertices = [
 			Vertex {
-				position: vec2(-1.0, -1.0),
+				position: vec2(-0.5, -0.5),
 				color: vec4(0.0, 1.0, 0.0, 1.0),
 			},
 			Vertex {
-				position: vec2(1.0, -1.0),
+				position: vec2(0.5, -0.5),
 				color: vec4(0.0, 0.0, 1.0, 1.0),
 			},
 			Vertex {
-				position: vec2(-1.0, 1.0),
+				position: vec2(-0.5, 0.5),
 				color: vec4(1.0, 0.0, 0.0, 1.0),
 			},
 		];
 
 		let renderer = self.renderer.as_mut().unwrap();
-
-		let mut cmd_buf = renderer.begin_frame();
-		{
-			let program = renderer
-				.shader_manager
+		renderer.record_frame(|cmd_buf, shader_manager| {
+			let program = shader_manager
 				.find_program(&["assets/shaders/triangle.vert.spv", "assets/shaders/triangle.frag.spv"])
 				.unwrap();
-
-			let cmd_buf = Rc::get_mut(&mut cmd_buf).unwrap();
 
 			let rendering_info = RenderingInfo {
 				render_area: vk::Rect2D {
@@ -78,22 +84,26 @@ impl Triangle {
 			cmd_buf.set_program(program);
 
 			if !cmd_buf.is_vertex_data_allocated() {
-				let mut buf_writer = cmd_buf.alloc_vertex_data(
-					0,
-					(size_of::<Vertex>() * vertices.len()) as u64,
-					size_of::<Vertex>() as u32,
-					vk::VertexInputRate::VERTEX,
-				);
-				let vert_data = unsafe {
-					slice::from_raw_parts(vertices.as_ptr() as *const u8, vertices.len() * size_of::<Vertex>())
-				};
-				buf_writer.write(vert_data);
+				{
+					let mut buf_writer = cmd_buf.alloc_vertex_data(
+						0,
+						(size_of::<Vertex>() * vertices.len()) as u64,
+						size_of::<Vertex>() as u32,
+						vk::VertexInputRate::VERTEX,
+					);
+					let vert_data = unsafe {
+						slice::from_raw_parts(vertices.as_ptr() as *const u8, vertices.len() * size_of::<Vertex>())
+					};
+					buf_writer.write(vert_data);
+				}
+				cmd_buf.set_vertex_attrib(0, 0, vk::Format::R32G32_SFLOAT, 0);
+				cmd_buf.set_vertex_attrib(1, 0, vk::Format::R32G32B32A32_SFLOAT, offset_of!(Vertex, color) as u32);
 			}
 
-			cmd_buf.end_rendering();
-		}
+			cmd_buf.draw(3);
 
-		renderer.end_frame(cmd_buf.as_ref());
+			cmd_buf.end_rendering();
+		});
 	}
 }
 

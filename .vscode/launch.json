@@ -4,17 +4,6 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-    
-        {
-            "name": "Debug unit tests in library 'acadia'",
-            "type": "lldb",
-            "request": "launch",
-            "cargo": {
-                "args": [
-                    "test"
-                ]
-            }
-        },
         {
             "name": "Debug executable 'triangle'",
             "type": "lldb",
@@ -26,17 +15,6 @@
                 ]
             },
             "args": []
-        },
-        {
-            "name": "Debug unit tests in executable 'triangle'",
-            "type": "lldb",
-            "request": "launch",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--bin=triangle"
-                ]
-            }
         }
     ]
 }
