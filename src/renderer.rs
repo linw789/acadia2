@@ -3,8 +3,8 @@ use crate::vulkan::{
 	cmdbuf::CmdBuf,
 	device::Device,
 	frame::Frame,
-	wsi::{MAX_FRAMES_IN_FLIGHT, Wsi},
 	shader::ShaderManager,
+	wsi::{MAX_FRAMES_IN_FLIGHT, Wsi},
 };
 use ash::{khr, vk};
 use std::rc::Rc;
@@ -122,7 +122,8 @@ impl Renderer {
 		let in_flight_frame_index = self.begin_frame();
 
 		let cmd_buf = self.frames[in_flight_frame_index].cmd_buf_mut();
-		cmd_buf.set_present_image(self.wsi.present_image());
+		cmd_buf.set_present_image_and_view(self.wsi.present_image(), self.wsi.present_image_view());
+		cmd_buf.set_color_format(self.wsi.surface_format());
 
 		f(cmd_buf, &mut self.shader_manager);
 
@@ -138,7 +139,7 @@ impl Renderer {
 			self.device.api.reset_fences(&[frame_fence]).unwrap();
 		}
 
-		// TODO: Why does 
+		// TODO: Why does this (acquire-next-image) need to happen after waiting for the frame fence?
 		self.wsi.begin_frame(in_flight_frame_index);
 
 		in_flight_frame_index
@@ -153,7 +154,7 @@ impl Renderer {
 			let submit_info = vk::SubmitInfo::default()
 				.wait_semaphores(std::slice::from_ref(&present_image_ready_semaphore))
 				.wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-				.command_buffers(std::slice::from_ref(&cmd_buf.cmd_buf))
+				.command_buffers(std::slice::from_ref(&cmd_buf.handle))
 				.signal_semaphores(std::slice::from_ref(&render_complete_semaphore));
 			unsafe {
 				self.device

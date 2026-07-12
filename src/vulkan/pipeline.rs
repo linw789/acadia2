@@ -28,15 +28,15 @@ struct VertexBinding {
 	input_rate: vk::VertexInputRate,
 }
 
-struct PipelineState {
-	primitive_topology: vk::PrimitiveTopology,
-	depth_test: bool,
-	depth_write: bool,
-	depth_compare_op: vk::CompareOp,
-	depth_format: vk::Format,
-	dynamic_depth_bias_enable: bool,
-	line_width: f32,
-	color_formats: Vec<vk::Format>,
+pub struct PipelineState {
+	pub primitive_topology: vk::PrimitiveTopology,
+	pub color_format: vk::Format,
+	pub depth_test: bool,
+	pub depth_write: bool,
+	pub depth_compare_op: vk::CompareOp,
+	pub depth_format: vk::Format,
+	pub dynamic_depth_bias_enable: bool,
+	pub line_width: f32,
 }
 
 impl PipelineBuilder {
@@ -148,21 +148,26 @@ impl PipelineBuilder {
 
 		// blend state
 		let mut color_attachment_states = [vk::PipelineColorBlendAttachmentState::default(); MAX_ATTACHMENT_COUNT];
-		let color_blend_state = vk::PipelineColorBlendStateCreateInfo::default();
+		let mut color_attachment_count = 0;
 		if let Some(frag_shader) = program.get_fragment_shader() {
-			let output_location_mask = frag_shader.output_location_mask;
-			for attachment_index in 0..MAX_ATTACHMENT_COUNT {
-				if output_location_mask & (1 << attachment_index) != 0 {
-					color_attachment_states[attachment_index] = vk::PipelineColorBlendAttachmentState::default()
+			for i in 0..MAX_ATTACHMENT_COUNT {
+				if frag_shader.output_location_mask & (1 << i) != 0 {
+					color_attachment_states[i] = vk::PipelineColorBlendAttachmentState::default()
+						// TODO: How to dynamically set these?
 						.blend_enable(false)
 						.color_write_mask(vk::ColorComponentFlags::RGBA);
+					color_attachment_count += 1;
 				}
 			}
 		}
+		let color_blend_state = vk::PipelineColorBlendStateCreateInfo::default()
+			.attachments(&color_attachment_states[..color_attachment_count]);
 
 		let mut rendering_createinfo = vk::PipelineRenderingCreateInfo::default()
-			.color_attachment_formats(&self.state.color_formats)
-			.depth_attachment_format(self.state.depth_format);
+			.color_attachment_formats(std::slice::from_ref(&self.state.color_format));
+		if self.state.depth_format == vk::Format::UNDEFINED {
+			rendering_createinfo = rendering_createinfo.depth_attachment_format(self.state.depth_format);
+		}
 
 		let pipeline_createinfo = vk::GraphicsPipelineCreateInfo::default()
 			.stages(&stages)
@@ -192,13 +197,13 @@ impl Default for PipelineState {
 	fn default() -> Self {
 		Self {
 			primitive_topology: vk::PrimitiveTopology::TRIANGLE_LIST,
+			color_format: vk::Format::UNDEFINED,
 			depth_test: true,
 			depth_write: true,
 			depth_compare_op: vk::CompareOp::GREATER,
-			depth_format: vk::Format::D32_SFLOAT,
-			dynamic_depth_bias_enable: true,
+			depth_format: vk::Format::UNDEFINED,
+			dynamic_depth_bias_enable: false,
 			line_width: 0.5,
-			color_formats: Vec::new(),
 		}
 	}
 }

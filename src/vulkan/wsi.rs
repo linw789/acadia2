@@ -20,6 +20,7 @@ pub struct Wsi {
 	swapchain_extent: vk::Extent2D,
 	// Swapchain's images used for presenting.
 	present_images: Vec<vk::Image>,
+	present_image_views: Vec<vk::ImageView>,
 	// Signal when a present image is ready to write to.
 	present_image_ready_semaphores: Vec<vk::Semaphore>,
 	// Signal when GPU finishes writing to a present image.
@@ -70,6 +71,29 @@ impl Wsi {
 		);
 
 		let present_images = unsafe { swapchain_loader.get_swapchain_images(swapchain).unwrap() };
+		let present_image_views = present_images
+			.iter()
+			.map(|&img| {
+				let view_createinfo = vk::ImageViewCreateInfo::default()
+					.view_type(vk::ImageViewType::TYPE_2D)
+					.format(surface_format.format)
+					.components(vk::ComponentMapping {
+						r: vk::ComponentSwizzle::R,
+						g: vk::ComponentSwizzle::G,
+						b: vk::ComponentSwizzle::B,
+						a: vk::ComponentSwizzle::A,
+					})
+					.subresource_range(vk::ImageSubresourceRange {
+						aspect_mask: vk::ImageAspectFlags::COLOR,
+						base_mip_level: 0,
+						level_count: 1,
+						base_array_layer: 0,
+						layer_count: 1,
+					})
+					.image(img);
+				unsafe { device.api.create_image_view(&view_createinfo, None).unwrap() }
+			})
+			.collect();
 
 		let mut present_image_ready_semaphores = Vec::new();
 		for _ in 0..MAX_FRAMES_IN_FLIGHT {
@@ -93,6 +117,7 @@ impl Wsi {
 			swapchain,
 			swapchain_extent,
 			present_images,
+			present_image_views,
 			present_image_ready_semaphores,
 			render_complete_semaphores,
 			present_image_ready_semaphore: vk::Semaphore::null(),
@@ -108,8 +133,16 @@ impl Wsi {
 		}
 	}
 
+	pub fn surface_format(&self) -> vk::Format {
+		self.surface_format.format
+	}
+
 	pub fn present_image(&self) -> vk::Image {
 		self.present_images[self.present_image_index]
+	}
+
+	pub fn present_image_view(&self) -> vk::ImageView {
+		self.present_image_views[self.present_image_index]
 	}
 
 	pub fn present_image_ready_semaphore(&self) -> vk::Semaphore {
@@ -126,7 +159,8 @@ impl Wsi {
 		self.present_image_ready_semaphore = self.present_image_ready_semaphores[in_flight_frame_index];
 
 		self.present_image_index = unsafe {
-			let result = self.swapchain_loader
+			let result = self
+				.swapchain_loader
 				.acquire_next_image(
 					self.swapchain,
 					u64::MAX,
@@ -134,7 +168,7 @@ impl Wsi {
 					vk::Fence::null(),
 				)
 				.unwrap();
-			
+
 			// TODO: check result.1 to see if swapchain is suboptimal.
 			result.0 as usize
 		};
@@ -147,7 +181,11 @@ impl Wsi {
 			.wait_semaphores(std::slice::from_ref(&render_complete_semaphore))
 			.swapchains(std::slice::from_ref(&self.swapchain))
 			.image_indices(std::slice::from_ref(&present_image_index));
-		unsafe { self.swapchain_loader.queue_present(self.device.present_queue, &present_info).unwrap(); }
+		unsafe {
+			self.swapchain_loader
+				.queue_present(self.device.present_queue, &present_info)
+				.unwrap();
+		}
 	}
 }
 

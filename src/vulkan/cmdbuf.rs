@@ -8,7 +8,7 @@ use ash::vk;
 use std::rc::Rc;
 
 pub struct CmdBuf {
-	pub cmd_buf: vk::CommandBuffer,
+	pub handle: vk::CommandBuffer,
 
 	viewport: vk::Viewport,
 	scissor: vk::Rect2D,
@@ -17,6 +17,7 @@ pub struct CmdBuf {
 	pipeline: vk::Pipeline,
 
 	present_image: vk::Image,
+	present_image_view: vk::ImageView,
 
 	vertex_buffer: Option<Buffer>,
 
@@ -28,14 +29,15 @@ pub struct RenderingInfo {
 }
 
 impl<'a> CmdBuf {
-	pub fn new(device: Rc<Device>, cmd_buf: vk::CommandBuffer) -> Self {
+	pub fn new(device: Rc<Device>, handle: vk::CommandBuffer) -> Self {
 		Self {
-			cmd_buf,
+			handle,
 			viewport: vk::Viewport::default(),
 			scissor: vk::Rect2D::default(),
 			pipeline_builder: PipelineBuilder::default(),
 			pipeline: vk::Pipeline::null(),
 			present_image: vk::Image::null(),
+			present_image_view: vk::ImageView::null(),
 			vertex_buffer: None, // Buffer::new(Rc::clone(&device), 4096, vk::BufferUsageFlags::VERTEX_BUFFER),
 			device,
 		}
@@ -43,8 +45,9 @@ impl<'a> CmdBuf {
 
 	pub fn destruct(&mut self) {}
 
-	pub fn set_present_image(&mut self, present_image: vk::Image) {
-		self.present_image = present_image;
+	pub fn set_present_image_and_view(&mut self, image: vk::Image, view: vk::ImageView) {
+		self.present_image = image;
+		self.present_image_view = view;
 	}
 
 	pub fn begin_rendering(&mut self, info: RenderingInfo) {
@@ -58,22 +61,48 @@ impl<'a> CmdBuf {
 		};
 		self.scissor = info.render_area;
 
+		let color_attachment_infos = [vk::RenderingAttachmentInfo::default()
+			.image_view(self.present_image_view)
+			.image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+			.load_op(vk::AttachmentLoadOp::CLEAR)
+			.store_op(vk::AttachmentStoreOp::STORE)
+			.clear_value(vk::ClearValue {
+			color: vk::ClearColorValue {
+				float32: [135.0 / 255.0, 206.0 / 255.0, 250.0 / 255.0, 15.0 / 255.0],
+			},
+		})];
+
+		// let depth_attachment_info = vk::RenderingAttachmentInfo::default()
+		// 	.image_view(renderer.depth_image_view())
+		// 	.image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
+		// 	.load_op(vk::AttachmentLoadOp::CLEAR)
+		// 	.store_op(vk::AttachmentStoreOp::STORE)
+		// 	.clear_value(vk::ClearValue {
+		// 		depth_stencil: vk::ClearDepthStencilValue {
+		// 			depth: 0.0,
+		// 			stencil: 0,
+		// 		},
+		// 	});
+
+		let rendering_info = vk::RenderingInfo::default()
+			.render_area(info.render_area)
+			.layer_count(1)
+			.color_attachments(&color_attachment_infos);
+
 		// Re-start command buffer recording.
 		unsafe {
 			self.device
 				.api
-				.reset_command_buffer(self.cmd_buf, vk::CommandBufferResetFlags::RELEASE_RESOURCES)
+				.reset_command_buffer(self.handle, vk::CommandBufferResetFlags::RELEASE_RESOURCES)
 				.unwrap();
 			let cmdbuf_begin_info =
 				vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 			self.device
 				.api
-				.begin_command_buffer(self.cmd_buf, &cmdbuf_begin_info)
+				.begin_command_buffer(self.handle, &cmdbuf_begin_info)
 				.unwrap();
-		}
 
-		// Transition the present image to the layout COLOR_ATTACHMENT_OPTIMAL.
-		unsafe {
+			// Transition the present image to the layout COLOR_ATTACHMENT_OPTIMAL.
 			let barrier = vk::ImageMemoryBarrier2::default()
 				.src_stage_mask(vk::PipelineStageFlags2::TOP_OF_PIPE)
 				.src_access_mask(vk::AccessFlags2::NONE)
@@ -94,11 +123,15 @@ impl<'a> CmdBuf {
 				);
 
 			let dependency_info = vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&barrier));
-			self.device.api.cmd_pipeline_barrier2(self.cmd_buf, &dependency_info);
+			self.device.api.cmd_pipeline_barrier2(self.handle, &dependency_info);
+
+			self.device.api.cmd_begin_rendering(self.handle, &rendering_info);
 		}
 	}
 
 	pub fn end_rendering(&self) {
+		unsafe { self.device.api.cmd_end_rendering(self.handle); }
+
 		// After rendering, transition the present image to the layout PRESENT_SRC_KHR.
 		{
 			let barrier = vk::ImageMemoryBarrier2::default()
@@ -120,13 +153,13 @@ impl<'a> CmdBuf {
 				});
 			let dependency_info = vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&barrier));
 			unsafe {
-				self.device.api.cmd_pipeline_barrier2(self.cmd_buf, &dependency_info);
+				self.device.api.cmd_pipeline_barrier2(self.handle, &dependency_info);
 			}
 		}
 
 		// End command buffer recording.
 		unsafe {
-			self.device.api.end_command_buffer(self.cmd_buf).unwrap();
+			self.device.api.end_command_buffer(self.handle).unwrap();
 		}
 	}
 
@@ -161,6 +194,10 @@ impl<'a> CmdBuf {
 			.set_vertex_attributes(attrib_index, binding, format, offset);
 	}
 
+	pub fn set_color_format(&mut self, format: vk::Format) {
+		self.pipeline_builder.state.color_format = format;
+	}
+
 	pub fn draw(&mut self, vertex_count: u32) {
 		if self.pipeline == vk::Pipeline::null() {
 			self.pipeline = self.pipeline_builder.build_graphics_pipeline(&self.device);
@@ -169,16 +206,16 @@ impl<'a> CmdBuf {
 		unsafe {
 			self.device
 				.api
-				.cmd_bind_pipeline(self.cmd_buf, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+				.cmd_bind_pipeline(self.handle, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
 
-			self.device.api.cmd_set_viewport(self.cmd_buf, 0, &[self.viewport]);
-			self.device.api.cmd_set_scissor(self.cmd_buf, 0, &[self.scissor]);
+			self.device.api.cmd_set_viewport(self.handle, 0, &[self.viewport]);
+			self.device.api.cmd_set_scissor(self.handle, 0, &[self.scissor]);
 
 			self.device
 				.api
-				.cmd_bind_vertex_buffers(self.cmd_buf, 0, &[self.vertex_buffer.as_ref().unwrap().buf], &[0]);
+				.cmd_bind_vertex_buffers(self.handle, 0, &[self.vertex_buffer.as_ref().unwrap().buf], &[0]);
 
-			self.device.api.cmd_draw(self.cmd_buf, vertex_count, 1, 0, 0);
+			self.device.api.cmd_draw(self.handle, vertex_count, 1, 0, 0);
 		}
 	}
 }
