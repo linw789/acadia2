@@ -204,9 +204,9 @@ impl<'a> CmdBuf {
 			self.device.api.cmd_set_viewport(self.handle, 0, &[self.viewport]);
 			self.device.api.cmd_set_scissor(self.handle, 0, &[self.scissor]);
 
-			// self.device
-			// 	.api
-			// 	.cmd_bind_vertex_buffers(self.handle, 0, &[self.vertex_buffer.as_ref().unwrap().buf], &[0]);
+			self.device
+				.api
+				.cmd_bind_vertex_buffers(self.handle, 0, &[self.vertex_buffer.as_ref().unwrap().buf], &[0]);
 
 			self.device.api.cmd_draw(self.handle, vertex_count, 1, 0, 0);
 		}
