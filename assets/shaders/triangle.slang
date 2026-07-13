@@ -27,7 +27,7 @@ struct Fragment {
 [shader("fragment")]
 Fragment fragment_main(FragmentInput frag_input: FragmentInput) {
 	Fragment fragment;
-	fragment.color = frag_input.color;
+	fragment.color = float4(1.0, 0.0, 0.0, 1.0); // frag_input.color;
 	return fragment;
 }
 

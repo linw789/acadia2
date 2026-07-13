@@ -43,6 +43,9 @@ impl Frame {
 	}
 
 	pub fn destruct(&mut self) {
+		for cmdbuf in self.cmd_bufs.iter_mut() {
+			cmdbuf.destruct();
+		}
 		self.cmd_bufs.clear();
 		unsafe {
 			self.device.api.destroy_command_pool(self.cmd_pool, None);

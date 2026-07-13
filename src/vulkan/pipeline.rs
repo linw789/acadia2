@@ -90,11 +90,10 @@ impl PipelineBuilder {
 		let dynamic_states_createinfo = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
 
 		// rasterization state
-		let line_width = 0.8;
 		let raster_state = vk::PipelineRasterizationStateCreateInfo::default()
 			.front_face(vk::FrontFace::COUNTER_CLOCKWISE)
 			.cull_mode(vk::CullModeFlags::BACK)
-			.line_width(line_width)
+			.line_width(self.state.line_width)
 			.polygon_mode(vk::PolygonMode::FILL)
 			.depth_bias_enable(self.state.dynamic_depth_bias_enable);
 
@@ -198,8 +197,8 @@ impl Default for PipelineState {
 		Self {
 			primitive_topology: vk::PrimitiveTopology::TRIANGLE_LIST,
 			color_format: vk::Format::UNDEFINED,
-			depth_test: true,
-			depth_write: true,
+			depth_test: false,
+			depth_write: false,
 			depth_compare_op: vk::CompareOp::GREATER,
 			depth_format: vk::Format::UNDEFINED,
 			dynamic_depth_bias_enable: false,

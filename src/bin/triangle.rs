@@ -39,10 +39,7 @@ impl Triangle {
 	fn new(window_size: PhysicalSize<u32>) -> Self {
 		Self {
 			window: None,
-			window_size: PhysicalSize {
-				width: 640,
-				height: 480,
-			},
+			window_size,
 			exit_requested: false,
 			renderer: None,
 		}
@@ -105,20 +102,23 @@ impl Triangle {
 			cmd_buf.end_rendering();
 		});
 	}
+
+	fn destruct(&mut self) {
+	}
 }
 
 impl ApplicationHandler for Triangle {
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
 		if self.window.is_none() {
-			self.window = Some(
-				event_loop
+			let window = event_loop
 					.create_window(
 						Window::default_attributes()
 							.with_inner_size(self.window_size)
 							.with_title("Acadia"),
 					)
-					.unwrap(),
-			);
+					.unwrap();
+			self.window_size = window.inner_size();
+			self.window = Some(window);
 			self.init_renderer();
 		}
 	}
@@ -126,7 +126,6 @@ impl ApplicationHandler for Triangle {
 	fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
 		match event {
 			WindowEvent::CloseRequested => {
-				println!("[DEBUG LINW] close requested.");
 				// self.destruct();
 				event_loop.exit();
 				self.exit_requested = true;

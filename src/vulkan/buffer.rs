@@ -91,10 +91,8 @@ impl Buffer {
 			ptr: self.ptr.borrow_mut(),
 		}
 	}
-}
 
-impl Drop for Buffer {
-	fn drop(&mut self) {
+	pub fn destruct(&mut self) {
 		unsafe {
 			self.device.api.free_memory(self.mem, None);
 			self.device.api.destroy_buffer(self.buf, None);

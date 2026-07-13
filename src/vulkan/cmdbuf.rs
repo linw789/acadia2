@@ -43,7 +43,12 @@ impl<'a> CmdBuf {
 		}
 	}
 
-	pub fn destruct(&mut self) {}
+	pub fn destruct(&mut self) {
+		if let Some(buf) = self.vertex_buffer.as_mut() {
+			buf.destruct();
+		}
+		unsafe { self.device.api.destroy_pipeline(self.pipeline, None); }
+	}
 
 	pub fn set_present_image_and_view(&mut self, image: vk::Image, view: vk::ImageView) {
 		self.present_image = image;
@@ -67,22 +72,10 @@ impl<'a> CmdBuf {
 			.load_op(vk::AttachmentLoadOp::CLEAR)
 			.store_op(vk::AttachmentStoreOp::STORE)
 			.clear_value(vk::ClearValue {
-			color: vk::ClearColorValue {
-				float32: [135.0 / 255.0, 206.0 / 255.0, 250.0 / 255.0, 15.0 / 255.0],
-			},
+				color: vk::ClearColorValue {
+					float32: [135.0 / 255.0, 206.0 / 255.0, 250.0 / 255.0, 15.0 / 255.0],
+				},
 		})];
-
-		// let depth_attachment_info = vk::RenderingAttachmentInfo::default()
-		// 	.image_view(renderer.depth_image_view())
-		// 	.image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-		// 	.load_op(vk::AttachmentLoadOp::CLEAR)
-		// 	.store_op(vk::AttachmentStoreOp::STORE)
-		// 	.clear_value(vk::ClearValue {
-		// 		depth_stencil: vk::ClearDepthStencilValue {
-		// 			depth: 0.0,
-		// 			stencil: 0,
-		// 		},
-		// 	});
 
 		let rendering_info = vk::RenderingInfo::default()
 			.render_area(info.render_area)
@@ -211,9 +204,9 @@ impl<'a> CmdBuf {
 			self.device.api.cmd_set_viewport(self.handle, 0, &[self.viewport]);
 			self.device.api.cmd_set_scissor(self.handle, 0, &[self.scissor]);
 
-			self.device
-				.api
-				.cmd_bind_vertex_buffers(self.handle, 0, &[self.vertex_buffer.as_ref().unwrap().buf], &[0]);
+			// self.device
+			// 	.api
+			// 	.cmd_bind_vertex_buffers(self.handle, 0, &[self.vertex_buffer.as_ref().unwrap().buf], &[0]);
 
 			self.device.api.cmd_draw(self.handle, vertex_count, 1, 0, 0);
 		}
