@@ -92,7 +92,7 @@ impl PipelineBuilder {
 		// rasterization state
 		let raster_state = vk::PipelineRasterizationStateCreateInfo::default()
 			.front_face(vk::FrontFace::COUNTER_CLOCKWISE)
-			.cull_mode(vk::CullModeFlags::BACK)
+			.cull_mode(vk::CullModeFlags::NONE)
 			.line_width(self.state.line_width)
 			.polygon_mode(vk::PolygonMode::FILL)
 			.depth_bias_enable(self.state.dynamic_depth_bias_enable);
