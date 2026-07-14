@@ -32,7 +32,7 @@ struct Triangle {
 	window_size: PhysicalSize<u32>,
 	exit_requested: bool,
 
-	renderer: Option<Renderer>,
+	renderer: Option<Box<Renderer>>,
 }
 
 impl Triangle {
@@ -67,10 +67,6 @@ impl Triangle {
 
 		let renderer = self.renderer.as_mut().unwrap();
 		renderer.record_frame(|cmd_buf, shader_manager| {
-			let program = shader_manager
-				.find_program(&["assets/shaders/triangle.vert.spv", "assets/shaders/triangle.frag.spv"])
-				.unwrap();
-
 			let rendering_info = RenderingInfo {
 				render_area: vk::Rect2D {
 					offset: vk::Offset2D { x: 0, y: 0, },
@@ -78,6 +74,10 @@ impl Triangle {
 				}
 			};
 			cmd_buf.begin_rendering(rendering_info);
+
+			let program = shader_manager
+				.find_program(&["assets/shaders/triangle.vert.spv", "assets/shaders/triangle.frag.spv"])
+				.unwrap();
 			cmd_buf.set_program(program);
 
 			if !cmd_buf.is_vertex_data_allocated() {

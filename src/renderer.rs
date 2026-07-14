@@ -6,12 +6,21 @@ use crate::vulkan::{
 	shader::ShaderManager,
 	wsi::{MAX_FRAMES_IN_FLIGHT, Wsi},
 };
-use ash::{khr, vk};
-use std::rc::Rc;
+use ash::{ext::debug_utils, khr, vk};
+use std::{borrow::Cow, ffi::CStr, os::raw::c_void, rc::Rc};
 use winit::{
 	raw_window_handle::{HasDisplayHandle, HasWindowHandle},
 	window::Window,
 };
+
+struct State {
+	frame_count: u64,
+}
+
+struct DebugUtil {
+	instance: debug_utils::Instance,
+	messenger: vk::DebugUtilsMessengerEXT,
+}
 
 pub struct Renderer {
 	base: Base,
@@ -19,12 +28,15 @@ pub struct Renderer {
 	wsi: Wsi,
 	frames: [Frame; MAX_FRAMES_IN_FLIGHT],
 	frame_fences: [vk::Fence; MAX_FRAMES_IN_FLIGHT],
-	frame_count: u64,
 	shader_manager: ShaderManager,
+
+	frame_count: u64,
+
+	debug_util: Option<DebugUtil>,
 }
 
 impl Renderer {
-	pub fn new(window: &Window) -> Self {
+	pub fn new(window: &Window) -> Box<Self> {
 		let mut base = Base::new(window);
 
 		// Create surface.
@@ -93,18 +105,32 @@ impl Renderer {
 		let mut shader_manager = ShaderManager::new(Rc::clone(&device));
 		shader_manager.add_graphics_program("assets/shaders/triangle.vert.spv", "assets/shaders/triangle.frag.spv");
 
-		Self {
+		// NOTE: Renderer must be box'd (heap allocated), otherwise `self` passed as user_data in
+		// init_debug_util() can become invalid.
+		let mut renderer = Box::new(Self {
 			base,
 			device,
 			wsi,
 			frames,
 			frame_fences,
-			frame_count: 0,
 			shader_manager,
-		}
+			frame_count: 0,
+			debug_util: None,
+		});
+
+		renderer.init_debug_util();
+
+		renderer
 	}
 
 	pub fn destruct(&mut self) {
+		if let Some(debug_util) = self.debug_util.as_ref() {
+			unsafe {
+				debug_util
+					.instance
+					.destroy_debug_utils_messenger(debug_util.messenger, None);
+			}
+		}
 		for fence in self.frame_fences.iter() {
 			unsafe {
 				self.device.api.destroy_fence(*fence, None);
@@ -139,7 +165,6 @@ impl Renderer {
 			self.device.api.reset_fences(&[frame_fence]).unwrap();
 		}
 
-		// TODO: Why does this (acquire-next-image) need to happen after waiting for the frame fence?
 		self.wsi.begin_frame(in_flight_frame_index);
 
 		in_flight_frame_index
@@ -167,4 +192,67 @@ impl Renderer {
 		self.wsi.end_frame();
 		self.frame_count += 1;
 	}
+
+	fn init_debug_util(&mut self) {
+		let (instance, messenger) = {
+			let debuginfo = vk::DebugUtilsMessengerCreateInfoEXT::default()
+				.message_severity(
+					vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+						| vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+						| vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
+				)
+				.message_type(
+					vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+						| vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+						| vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+				)
+				.pfn_user_callback(Some(vulkan_debug_callback))
+				.user_data((self as *mut Self).cast::<c_void>());
+
+			let instance = debug_utils::Instance::new(&self.base.entry, &self.base.instance);
+			let messenger = unsafe { instance.create_debug_utils_messenger(&debuginfo, None).unwrap() };
+			(instance, messenger)
+		};
+		self.debug_util = Some(DebugUtil { instance, messenger });
+	}
+}
+
+#[cfg(feature = "vulkan_debug")]
+extern "system" fn vulkan_debug_callback(
+	message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+	message_type: vk::DebugUtilsMessageTypeFlagsEXT,
+	p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT<'_>,
+	user_data: *mut c_void,
+) -> vk::Bool32 {
+	let callback_data = unsafe { *p_callback_data };
+	let message_id_number = callback_data.message_id_number;
+
+	if message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+		|| message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+	{
+		let renderer = unsafe { &mut *user_data.cast::<Renderer>() };
+		let frame_count = renderer.frame_count;
+
+		let message_id_name = if callback_data.p_message_id_name.is_null() {
+			Cow::from("?")
+		} else {
+			unsafe { CStr::from_ptr(callback_data.p_message_id_name).to_string_lossy() }
+		};
+
+		let message = if callback_data.p_message.is_null() {
+			Cow::from("?")
+		} else {
+			unsafe { CStr::from_ptr(callback_data.p_message).to_string_lossy() }
+		};
+
+		println!(
+			"[Vulkan {message_severity:?}:{message_type:?}][frame count: {frame_count}][{message_id_name} ({message_id_number})] : {message}\n",
+		);
+
+		if message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
+			panic!("Vulkan validation failed.");
+		}
+	}
+
+	vk::FALSE
 }

@@ -1,48 +1,10 @@
 use ash::{
 	Entry, Instance,
-	ext::debug_utils,
 	khr::surface,
 	vk::{self, PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceMemoryProperties},
+	ext::debug_utils,
 };
-use std::{borrow::Cow, ffi::CStr};
 use winit::{raw_window_handle::HasDisplayHandle, window::Window};
-
-#[cfg(feature = "vulkan_debug")]
-extern "system" fn vulkan_debug_callback(
-	message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
-	message_type: vk::DebugUtilsMessageTypeFlagsEXT,
-	p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT<'_>,
-	_user_data: *mut std::os::raw::c_void,
-) -> vk::Bool32 {
-	let callback_data = unsafe { *p_callback_data };
-	let message_id_number = callback_data.message_id_number;
-
-	if message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-		|| message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-	{
-		let message_id_name = if callback_data.p_message_id_name.is_null() {
-			Cow::from("?")
-		} else {
-			unsafe { CStr::from_ptr(callback_data.p_message_id_name).to_string_lossy() }
-		};
-
-		let message = if callback_data.p_message.is_null() {
-			Cow::from("?")
-		} else {
-			unsafe { CStr::from_ptr(callback_data.p_message).to_string_lossy() }
-		};
-
-		println!(
-			"[Vulkan {message_severity:?}:{message_type:?}] [{message_id_name} ({message_id_number})] : {message}\n",
-		);
-
-		if message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
-			panic!("Vulkan validation failed.");
-		}
-	}
-
-	vk::FALSE
-}
 
 pub struct Base {
 	pub entry: Entry,
@@ -51,9 +13,6 @@ pub struct Base {
 	pub physical_device_mem_props: PhysicalDeviceMemoryProperties,
 	pub physical_device_features: PhysicalDeviceFeatures,
 	pub graphics_queue_family_index: u32,
-
-	debug_utils_instance: debug_utils::Instance,
-	debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
 impl Base {
@@ -91,29 +50,6 @@ impl Base {
 			unsafe { entry.create_instance(&createinfo, None).unwrap() }
 		};
 
-		let (debug_utils_instance, debug_messenger) = {
-			let debuginfo = vk::DebugUtilsMessengerCreateInfoEXT::default()
-				.message_severity(
-					vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-						| vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-						| vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
-				)
-				.message_type(
-					vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-						| vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-						| vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-				)
-				.pfn_user_callback(Some(vulkan_debug_callback));
-
-			let debug_util_instance = debug_utils::Instance::new(&entry, &instance);
-			let debug_messenger = unsafe {
-				debug_util_instance
-					.create_debug_utils_messenger(&debuginfo, None)
-					.unwrap()
-			};
-			(debug_util_instance, debug_messenger)
-		};
-
 		Self {
 			entry,
 			instance,
@@ -121,9 +57,6 @@ impl Base {
 			physical_device_mem_props: PhysicalDeviceMemoryProperties::default(),
 			physical_device_features: PhysicalDeviceFeatures::default(),
 			graphics_queue_family_index: u32::MAX,
-
-			debug_utils_instance,
-			debug_messenger,
 		}
 	}
 
@@ -170,8 +103,6 @@ impl Base {
 
 	pub fn destruct(&mut self) {
 		unsafe {
-			self.debug_utils_instance
-				.destroy_debug_utils_messenger(self.debug_messenger, None);
 			self.instance.destroy_instance(None);
 		}
 	}
