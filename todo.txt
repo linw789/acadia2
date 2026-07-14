@@ -1,0 +1,2 @@
+[ ] Toggle validation layer in base.rs (when adding extension names) and renderer.rs.
+[ ] Allocate buffer on demand.
